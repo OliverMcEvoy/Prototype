@@ -207,11 +207,13 @@ def _write_match_debug_file(
         f.write(f"POLYMARKET EVENTS  ({len(poly_events)} total)\n")
         f.write("-" * 80 + "\n")
         _UTC = timezone.utc
+
         def _pm_sort_key(p):
             d = p.end_date
             if d is None:
                 return datetime.min.replace(tzinfo=_UTC)
             return d if d.tzinfo is not None else d.replace(tzinfo=_UTC)
+
         for pm in sorted(poly_events, key=_pm_sort_key):
             matched_marker = "✓" if pm.id in matched_poly_ids else " "
             date_str = (
@@ -327,7 +329,9 @@ def main():
         if sport_hint in ("all", "politics"):
             st.caption("Show:")
             show_politics = st.checkbox("Politics", value=True)
-            show_sports = st.checkbox("Sports", value=True if sport_hint == "all" else False)
+            show_sports = st.checkbox(
+                "Sports", value=True if sport_hint == "all" else False
+            )
         else:
             show_politics = False
             show_sports = True
@@ -431,7 +435,9 @@ def main():
             scan_politics = sport_hint in ("all", "politics")
 
             if scan_sports:
-                sport_hints = None if sport_hint in ("all", "politics") else [sport_hint]
+                sport_hints = (
+                    None if sport_hint in ("all", "politics") else [sport_hint]
+                )
                 trad_events = betfair_client.get_odds(
                     sport_hints=sport_hints,
                     days_ahead=days_ahead,
@@ -440,7 +446,9 @@ def main():
                 st.caption(f"Betfair sports: {len(trad_events)} markets")
 
                 poly_events = poly_client.get_sports_markets(
-                    sport_hint=sport_hint if sport_hint not in ("all", "politics") else None,
+                    sport_hint=(
+                        sport_hint if sport_hint not in ("all", "politics") else None
+                    ),
                     active_only=True,
                     min_volume=0,
                 )
@@ -504,13 +512,17 @@ def main():
                         if pol_matches:
                             pol_arb_msg = (
                                 f" ({len(pol_opportunities)} arb)"
-                                if pol_opportunities else ""
+                                if pol_opportunities
+                                else ""
                             )
-                            status_parts.append(f"{len(pol_matches)} events matched{pol_arb_msg}")
+                            status_parts.append(
+                                f"{len(pol_matches)} events matched{pol_arb_msg}"
+                            )
                         if cand_matches:
                             cand_arb_msg = (
                                 f" ({len(cand_opportunities)} arb)"
-                                if cand_opportunities else ""
+                                if cand_opportunities
+                                else ""
                             )
                             status_parts.append(
                                 f"{len(cand_matches)} candidate races{cand_arb_msg}"
@@ -573,17 +585,18 @@ def main():
             return triple[1].volume
 
         matched_pairs_display = [t for t in matched_pairs if _pm_vol(t) >= min_volume]
-        pol_matches_display   = [t for t in pol_matches   if _pm_vol(t) >= min_volume]
-        cand_matches_display  = [t for t in cand_matches  if t[2].volume >= min_volume]
+        pol_matches_display = [t for t in pol_matches if _pm_vol(t) >= min_volume]
+        cand_matches_display = [t for t in cand_matches if t[2].volume >= min_volume]
         # Filter candidate opportunities to only those whose PM market passed
         _cand_display_ids = {
             (t[0].id, t[1].replace(" ", "_")) for t in cand_matches_display
         }
         cand_opps_display = [
-            o for o in cand_opportunities
+            o
+            for o in cand_opportunities
             if any(
-                o.event.id.startswith(f"{bid}_back_no_{rk}") or
-                o.event.id.startswith(f"{bid}_lay_yes_{rk}")
+                o.event.id.startswith(f"{bid}_back_no_{rk}")
+                or o.event.id.startswith(f"{bid}_lay_yes_{rk}")
                 for bid, rk in _cand_display_ids
             )
         ]
@@ -593,14 +606,24 @@ def main():
         def _opp_pm_vol(opp):
             # ArbitrageOpportunity.event may be a combined BF event;
             # look for the volume attribute added by the engine, else 0.
-            return getattr(opp.event, "_pm_volume", None) or getattr(opp, "_pm_volume", 0)
+            return getattr(opp.event, "_pm_volume", None) or getattr(
+                opp, "_pm_volume", 0
+            )
 
-        opportunities_display    = [o for o in opportunities    if _opp_pm_vol(o) >= min_volume or _opp_pm_vol(o) == 0]
-        pol_opportunities_display = [o for o in pol_opportunities if _opp_pm_vol(o) >= min_volume or _opp_pm_vol(o) == 0]
+        opportunities_display = [
+            o
+            for o in opportunities
+            if _opp_pm_vol(o) >= min_volume or _opp_pm_vol(o) == 0
+        ]
+        pol_opportunities_display = [
+            o
+            for o in pol_opportunities
+            if _opp_pm_vol(o) >= min_volume or _opp_pm_vol(o) == 0
+        ]
 
-        sports_filtered    = len(matched_pairs)  - len(matched_pairs_display)
-        politics_filtered  = len(pol_matches)    - len(pol_matches_display)
-        cand_filtered      = len(cand_matches)   - len(cand_matches_display)
+        sports_filtered = len(matched_pairs) - len(matched_pairs_display)
+        politics_filtered = len(pol_matches) - len(pol_matches_display)
+        cand_filtered = len(cand_matches) - len(cand_matches_display)
 
         # ---- Summary metrics ----
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -608,8 +631,10 @@ def main():
         c2.metric("🗳️ PM Politics", len(pol_pm_events))
         c3.metric("⚽ BF Sports", len(trad_events))
         c4.metric("⚽ PM Sports", len(poly_events))
-        c5.metric("💡 Arb Opportunities",
-                  len(pol_opportunities_display) + len(opportunities_display))
+        c5.metric(
+            "💡 Arb Opportunities",
+            len(pol_opportunities_display) + len(opportunities_display),
+        )
 
         if sports_filtered + politics_filtered + cand_filtered:
             st.caption(
@@ -634,7 +659,9 @@ def main():
                 )
                 st.divider()
 
-            display_matched_pairs(pol_matches_display, pol_opportunities_display, investment_amount)
+            display_matched_pairs(
+                pol_matches_display, pol_opportunities_display, investment_amount
+            )
 
             if cand_matches_display:
                 st.divider()
@@ -648,8 +675,8 @@ def main():
             no_match_reason = (
                 f"All {len(pol_matches)} political matches are below the "
                 f"${min_volume:,} liquidity filter."
-                if pol_matches else
-                f"Betfair has {len(pol_bf_events)} political markets and Polymarket has "
+                if pol_matches
+                else f"Betfair has {len(pol_bf_events)} political markets and Polymarket has "
                 f"{len(pol_pm_events)} political markets, but no cross-platform matches "
                 "were found. The event names may differ significantly across platforms."
             )
@@ -669,7 +696,9 @@ def main():
                 matched_bf_ids = {bf_ev.id for bf_ev, _, _ in matched_pairs_display}
                 unmatched = [e for e in trad_events if e.id not in matched_bf_ids]
                 if unmatched:
-                    with st.expander(f"{len(unmatched)} Betfair sports events unmatched"):
+                    with st.expander(
+                        f"{len(unmatched)} Betfair sports events unmatched"
+                    ):
                         for event in unmatched[:10]:
                             st.text(
                                 f"{event.home_team} vs {event.away_team} ({event.sport})"
@@ -681,14 +710,20 @@ def main():
                     )
                     st.divider()
 
-                display_matched_pairs(matched_pairs_display, opportunities_display, investment_amount)
+                display_matched_pairs(
+                    matched_pairs_display, opportunities_display, investment_amount
+                )
 
             elif trad_events:
                 st.markdown("## ⚽ Sports Markets")
                 st.warning("No cross-platform sports matches found.")
-                with st.expander(f"Betfair Events ({len(trad_events)})", expanded=False):
+                with st.expander(
+                    f"Betfair Events ({len(trad_events)})", expanded=False
+                ):
                     display_traditional_events(trad_events)
-                with st.expander(f"Polymarket Markets ({len(poly_events)})", expanded=False):
+                with st.expander(
+                    f"Polymarket Markets ({len(poly_events)})", expanded=False
+                ):
                     display_polymarket_markets(poly_events)
 
     # Auto-refresh logic
@@ -1262,34 +1297,48 @@ def display_candidate_binary_matches(
         cand_matches,
         key=lambda x: -(
             max(
-                (o.price for o in x[0].outcomes if o.bookmaker == "Betfair Exchange" and o.name == x[1]),
+                (
+                    o.price
+                    for o in x[0].outcomes
+                    if o.bookmaker == "Betfair Exchange" and o.name == x[1]
+                ),
                 default=0,
             )
         ),
     ):
         # BF prices for this runner
-        bf_backs = [o for o in bf_ev.outcomes if o.bookmaker == "Betfair Exchange" and o.name == runner]
-        bf_lays  = [o for o in bf_ev.outcomes if o.bookmaker == "Betfair Lay"      and o.name == runner]
-        bf_back  = max(o.price for o in bf_backs) if bf_backs else None
-        bf_lay   = max(o.price for o in bf_lays)  if bf_lays  else None
+        bf_backs = [
+            o
+            for o in bf_ev.outcomes
+            if o.bookmaker == "Betfair Exchange" and o.name == runner
+        ]
+        bf_lays = [
+            o
+            for o in bf_ev.outcomes
+            if o.bookmaker == "Betfair Lay" and o.name == runner
+        ]
+        bf_back = max(o.price for o in bf_backs) if bf_backs else None
+        bf_lay = max(o.price for o in bf_lays) if bf_lays else None
 
         # PM YES / NO prices
-        pm_outs   = pm_ev.outcomes or []
-        pm_prices = pm_ev.prices   or []
-        yes_idx   = next((i for i, o in enumerate(pm_outs) if o.lower() == "yes"), 0)
-        no_idx    = 1 - yes_idx
-        pm_yes    = pm_prices[yes_idx] if len(pm_prices) > yes_idx else None
-        pm_no     = pm_prices[no_idx]  if len(pm_prices) > no_idx  else None
+        pm_outs = pm_ev.outcomes or []
+        pm_prices = pm_ev.prices or []
+        yes_idx = next((i for i, o in enumerate(pm_outs) if o.lower() == "yes"), 0)
+        no_idx = 1 - yes_idx
+        pm_yes = pm_prices[yes_idx] if len(pm_prices) > yes_idx else None
+        pm_no = pm_prices[no_idx] if len(pm_prices) > no_idx else None
 
-        runner_key  = runner.replace(" ", "_")
-        back_no_id  = f"{bf_ev.id}_back_no_{runner_key}"
-        lay_yes_id  = f"{bf_ev.id}_lay_yes_{runner_key}"
-        arb_opps    = [o for o in cand_opportunities if o.event.id in (back_no_id, lay_yes_id)]
-        has_arb     = bool(arb_opps)
+        runner_key = runner.replace(" ", "_")
+        back_no_id = f"{bf_ev.id}_back_no_{runner_key}"
+        lay_yes_id = f"{bf_ev.id}_lay_yes_{runner_key}"
+        arb_opps = [
+            o for o in cand_opportunities if o.event.id in (back_no_id, lay_yes_id)
+        ]
+        has_arb = bool(arb_opps)
 
-        election    = bf_ev.description or f"{bf_ev.home_team}/{bf_ev.away_team}"
-        bf_implied  = f"{100/bf_back:.1f}%" if bf_back else "?"
-        pm_yes_pct  = f"{pm_yes*100:.1f}%" if pm_yes else "?"
+        election = bf_ev.description or f"{bf_ev.home_team}/{bf_ev.away_team}"
+        bf_implied = f"{100/bf_back:.1f}%" if bf_back else "?"
+        pm_yes_pct = f"{pm_yes*100:.1f}%" if pm_yes else "?"
 
         label = (
             f"{'💰 ARB | ' if has_arb else ''}{runner} — {election} "
@@ -1303,11 +1352,39 @@ def display_candidate_binary_matches(
                 st.markdown(f"**Betfair — {runner}**")
                 rows = []
                 if bf_back:
-                    back_vol = next((o.volume for o in bf_ev.outcomes if o.bookmaker == "Betfair Exchange" and o.name == runner), 0.0)
-                    rows.append({"Type": "Back", "Price": f"{bf_back:.3f}", "Implied": f"{100/bf_back:.1f}%", "Available": f"£{back_vol:,.0f}"})
+                    back_vol = next(
+                        (
+                            o.volume
+                            for o in bf_ev.outcomes
+                            if o.bookmaker == "Betfair Exchange" and o.name == runner
+                        ),
+                        0.0,
+                    )
+                    rows.append(
+                        {
+                            "Type": "Back",
+                            "Price": f"{bf_back:.3f}",
+                            "Implied": f"{100/bf_back:.1f}%",
+                            "Available": f"£{back_vol:,.0f}",
+                        }
+                    )
                 if bf_lay:
-                    lay_vol = next((o.volume for o in bf_ev.outcomes if o.bookmaker == "Betfair Lay" and o.name == runner), 0.0)
-                    rows.append({"Type": "Lay",  "Price": f"{bf_lay:.3f}",  "Implied": f"{100/bf_lay:.1f}%",  "Available": f"£{lay_vol:,.0f}"})
+                    lay_vol = next(
+                        (
+                            o.volume
+                            for o in bf_ev.outcomes
+                            if o.bookmaker == "Betfair Lay" and o.name == runner
+                        ),
+                        0.0,
+                    )
+                    rows.append(
+                        {
+                            "Type": "Lay",
+                            "Price": f"{bf_lay:.3f}",
+                            "Implied": f"{100/bf_lay:.1f}%",
+                            "Available": f"£{lay_vol:,.0f}",
+                        }
+                    )
                 if rows:
                     st.dataframe(rows, hide_index=True)
                 bf_url = _betfair_url(bf_ev.id, bf_ev.category)
@@ -1319,21 +1396,40 @@ def display_candidate_binary_matches(
                 st.caption(pm_ev.question)
                 pm_rows = []
                 if pm_yes is not None:
-                    pm_rows.append({"Outcome": "YES", "Prob": f"{pm_yes:.3f}", "Implied": f"{pm_yes*100:.1f}%", "Decimal odds": f"{1/pm_yes:.2f}"})
+                    pm_rows.append(
+                        {
+                            "Outcome": "YES",
+                            "Prob": f"{pm_yes:.3f}",
+                            "Implied": f"{pm_yes*100:.1f}%",
+                            "Decimal odds": f"{1/pm_yes:.2f}",
+                        }
+                    )
                 if pm_no is not None:
-                    pm_rows.append({"Outcome": "NO",  "Prob": f"{pm_no:.3f}",  "Implied": f"{pm_no*100:.1f}%",  "Decimal odds": f"{1/pm_no:.2f}"})
+                    pm_rows.append(
+                        {
+                            "Outcome": "NO",
+                            "Prob": f"{pm_no:.3f}",
+                            "Implied": f"{pm_no*100:.1f}%",
+                            "Decimal odds": f"{1/pm_no:.2f}",
+                        }
+                    )
                 if pm_rows:
                     st.dataframe(pm_rows, hide_index=True)
-                st.caption(f"📊 Volume: ${pm_ev.volume:,.0f} | Liquidity: ${pm_ev.liquidity:,.0f}")
+                st.caption(
+                    f"📊 Volume: ${pm_ev.volume:,.0f} | Liquidity: ${pm_ev.liquidity:,.0f}"
+                )
                 pm_url = _polymarket_url(pm_ev.event_slug or pm_ev.id)
                 if pm_url:
-                    st.link_button("View on Polymarket", pm_url, use_container_width=True)
+                    st.link_button(
+                        "View on Polymarket", pm_url, use_container_width=True
+                    )
 
             if has_arb:
                 for opp in sorted(arb_opps, key=lambda o: -o.profit_percentage):
                     strategy = (
-                        "Back BF + Buy NO on PM"  if "_back_no_" in opp.event.id else
-                        "Lay BF + Buy YES on PM"
+                        "Back BF + Buy NO on PM"
+                        if "_back_no_" in opp.event.id
+                        else "Lay BF + Buy YES on PM"
                     )
                     scaled = investment * (opp.profit_percentage / 100)
                     st.success(

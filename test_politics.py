@@ -27,12 +27,15 @@ from betfair_client import BetfairClient
 # ─── Shared timestamps ───────────────────────────────────────────────────────
 
 _NOW = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
-_ELECTION_DAY = _NOW + timedelta(days=200)   # elections are months away
+_ELECTION_DAY = _NOW + timedelta(days=200)  # elections are months away
 
 
 # ─── Fixture helpers ─────────────────────────────────────────────────────────
 
-def _outcome(name: str, price: float = 3.0, bookmaker: str = "Betfair Exchange") -> Outcome:
+
+def _outcome(
+    name: str, price: float = 3.0, bookmaker: str = "Betfair Exchange"
+) -> Outcome:
     return Outcome(name=name, price=price, bookmaker=bookmaker, last_update=_NOW)
 
 
@@ -86,6 +89,7 @@ def _pm_event(
 
 # ─── 1. Similarity scoring ────────────────────────────────────────────────────
 
+
 class TestCalculatePoliticsSimilarity(unittest.TestCase):
     """Tests for MarketMatcher._calculate_politics_similarity()."""
 
@@ -107,7 +111,8 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         )
         score = self.matcher._calculate_politics_similarity(bf, pm)
         self.assertGreaterEqual(
-            score, 0.35,
+            score,
+            0.35,
             f"US House race should score ≥ 0.35 (party aliases), got {score:.3f}",
         )
 
@@ -124,7 +129,8 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         )
         score = self.matcher._calculate_politics_similarity(bf, pm)
         self.assertGreaterEqual(
-            score, 0.35,
+            score,
+            0.35,
             f"UK election should score ≥ 0.35 (party aliases), got {score:.3f}",
         )
 
@@ -138,7 +144,8 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         )
         score = self.matcher._calculate_politics_similarity(bf, pm)
         self.assertGreaterEqual(
-            score, 0.50,
+            score,
+            0.50,
             f"Exact runner name match should give score ≥ 0.50, got {score:.3f}",
         )
 
@@ -189,7 +196,8 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         )
         score = self.matcher._calculate_politics_similarity(bf, pm)
         self.assertLess(
-            score, 0.10,
+            score,
+            0.10,
             f"Unrelated markets should score < 0.10, got {score:.3f}",
         )
 
@@ -203,7 +211,8 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         )
         score = self.matcher._calculate_politics_similarity(bf, pm)
         self.assertLess(
-            score, 0.15,
+            score,
+            0.15,
             f"Politics-vs-football should score < 0.15, got {score:.3f}",
         )
 
@@ -225,7 +234,9 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         # outcome_ratio should default to 0.0 (empty non-yes/no list)
         score = self.matcher._calculate_politics_similarity(bf, pm)
         # Score comes entirely from Signal 1 + Signal 2 keyword overlap
-        self.assertGreater(score, 0.0, "Binary Yes/No market should still score > 0 via Signal 1")
+        self.assertGreater(
+            score, 0.0, "Binary Yes/No market should still score > 0 via Signal 1"
+        )
         self.assertLessEqual(score, 1.0)
 
     def test_score_never_exceeds_one(self):
@@ -244,7 +255,9 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
         """Empty runner list on BF side → graceful 0.0, no exception."""
         bf = _bf_event([], event_id="1.032")
         bf.outcomes = []
-        pm = _pm_event("Which party wins 2026?", ["Republican", "Democrat"], event_id="poly-032")
+        pm = _pm_event(
+            "Which party wins 2026?", ["Republican", "Democrat"], event_id="poly-032"
+        )
         try:
             score = self.matcher._calculate_politics_similarity(bf, pm)
         except Exception as exc:
@@ -263,6 +276,7 @@ class TestCalculatePoliticsSimilarity(unittest.TestCase):
 
 
 # ─── 2. find_politics_matches() ──────────────────────────────────────────────
+
 
 class TestFindPoliticsMatches(unittest.TestCase):
     """Tests for MarketMatcher.find_politics_matches()."""
@@ -309,10 +323,14 @@ class TestFindPoliticsMatches(unittest.TestCase):
         self.assertEqual(len(matches), 2)
 
         pair_map = {bf.id: pm.id for bf, pm, _ in matches}
-        self.assertEqual(pair_map.get("1.201"), "poly-201",
-            "US House BF should match US House PM")
-        self.assertEqual(pair_map.get("1.202"), "poly-202",
-            "UK election BF should match UK election PM")
+        self.assertEqual(
+            pair_map.get("1.201"), "poly-201", "US House BF should match US House PM"
+        )
+        self.assertEqual(
+            pair_map.get("1.202"),
+            "poly-202",
+            "UK election BF should match UK election PM",
+        )
 
     def test_returns_three_element_tuples(self):
         """Each result must be a (Event, PolymarketEvent, float) tuple."""
@@ -347,8 +365,9 @@ class TestFindPoliticsMatches(unittest.TestCase):
         bf = _bf_event(["Donald Trump", "Joe Biden"], event_id="1.210")
         pm = _pm_event("Will ETH hit $10k in 2026?", ["Yes", "No"], event_id="poly-210")
         matches = self.matcher.find_politics_matches([bf], [pm])
-        self.assertEqual(len(matches), 0,
-            "Unrelated politics/crypto pair should not match")
+        self.assertEqual(
+            len(matches), 0, "Unrelated politics/crypto pair should not match"
+        )
 
     # ── greedy deduplication ─────────────────────────────────────────────────
 
@@ -363,8 +382,11 @@ class TestFindPoliticsMatches(unittest.TestCase):
         )
         matches = self.matcher.find_politics_matches([bf1, bf2], [pm])
         matched_pm_ids = [pm_ev.id for _, pm_ev, _ in matches]
-        self.assertEqual(matched_pm_ids.count("poly-220"), 1,
-            "PM event poly-220 should appear in exactly one match")
+        self.assertEqual(
+            matched_pm_ids.count("poly-220"),
+            1,
+            "PM event poly-220 should appear in exactly one match",
+        )
 
     def test_single_bf_event_not_matched_to_two_pm_events(self):
         """One BF event competing for two identical PM events → one wins."""
@@ -381,8 +403,11 @@ class TestFindPoliticsMatches(unittest.TestCase):
         )
         matches = self.matcher.find_politics_matches([bf], [pm1, pm2])
         matched_bf_ids = [bf_ev.id for bf_ev, _, _ in matches]
-        self.assertEqual(matched_bf_ids.count("1.221"), 1,
-            "BF event 1.221 should appear in exactly one match")
+        self.assertEqual(
+            matched_bf_ids.count("1.221"),
+            1,
+            "BF event 1.221 should appear in exactly one match",
+        )
 
     # ── date agnosticism ─────────────────────────────────────────────────────
 
@@ -397,11 +422,12 @@ class TestFindPoliticsMatches(unittest.TestCase):
             "Which party will win the House in 2026?",
             ["Republican", "Democrat"],
             event_id="poly-230",
-            end_date=_NOW + timedelta(days=350),   # 150-day gap from bf commence
+            end_date=_NOW + timedelta(days=350),  # 150-day gap from bf commence
         )
         matches = self.matcher.find_politics_matches([bf], [pm])
-        self.assertEqual(len(matches), 1,
-            "150-day gap should not prevent politics match")
+        self.assertEqual(
+            len(matches), 1, "150-day gap should not prevent politics match"
+        )
 
     def test_pm_event_with_no_end_date_can_match(self):
         """PM event without an end_date should still be eligible for matching."""
@@ -434,6 +460,7 @@ class TestFindPoliticsMatches(unittest.TestCase):
 
 # ─── 3. Date-filter bypass inside find_matches() ─────────────────────────────
 
+
 class TestDateFilterBypassInFindMatches(unittest.TestCase):
     """
     find_matches() applies a ±3-day date filter for sports but bypasses it for
@@ -451,7 +478,7 @@ class TestDateFilterBypassInFindMatches(unittest.TestCase):
         bf = _bf_event(
             ["Republican Party", "Democratic Party"],
             event_id="1.300",
-            category="politics",   # ← triggers bypass
+            category="politics",  # ← triggers bypass
             commence_time=_NOW + timedelta(days=200),
         )
         pm = _pm_event(
@@ -462,8 +489,11 @@ class TestDateFilterBypassInFindMatches(unittest.TestCase):
             end_date=_NOW + timedelta(days=350),
         )
         matches = self.matcher.find_matches([bf], [pm])
-        self.assertGreater(len(matches), 0,
-            "Politics event (category='politics') must bypass the ±3-day date filter")
+        self.assertGreater(
+            len(matches),
+            0,
+            "Politics event (category='politics') must bypass the ±3-day date filter",
+        )
 
     def test_sports_event_is_filtered_by_date(self):
         """
@@ -481,21 +511,25 @@ class TestDateFilterBypassInFindMatches(unittest.TestCase):
                 _outcome("Draw", 3.5),
                 _outcome("Arsenal", 4.0),
             ],
-            category="soccer",   # ← sports → date filter applies
+            category="soccer",  # ← sports → date filter applies
         )
         pm = _pm_event(
             "Will Manchester City beat Arsenal?",
             ["Yes", "No"],
             event_id="poly-301",
             sport_category="soccer",
-            end_date=_NOW + timedelta(days=10),   # well outside ±3-day window
+            end_date=_NOW + timedelta(days=10),  # well outside ±3-day window
         )
         matches = self.matcher.find_matches([bf], [pm])
-        self.assertEqual(len(matches), 0,
-            "Sports event 10 days apart must be blocked by the ±3-day date filter")
+        self.assertEqual(
+            len(matches),
+            0,
+            "Sports event 10 days apart must be blocked by the ±3-day date filter",
+        )
 
 
 # ─── 4. Config / BetfairClient constants ─────────────────────────────────────
+
 
 class TestPoliticsConstants(unittest.TestCase):
     """Sanity-check that Config and BetfairClient have the expected politics values."""
@@ -508,10 +542,8 @@ class TestPoliticsConstants(unittest.TestCase):
 
     def test_all_hints_are_non_empty_strings(self):
         for label, hint in Config.SHARED_SPORTS.items():
-            self.assertIsInstance(hint, str,
-                f"SHARED_SPORTS['{label}'] must be a str")
-            self.assertTrue(hint,
-                f"SHARED_SPORTS['{label}'] must be non-empty")
+            self.assertIsInstance(hint, str, f"SHARED_SPORTS['{label}'] must be a str")
+            self.assertTrue(hint, f"SHARED_SPORTS['{label}'] must be non-empty")
 
     def test_betfair_politics_event_type_id(self):
         self.assertEqual(BetfairClient.POLITICS_EVENT_TYPE_ID, "2378961")
@@ -530,6 +562,7 @@ class TestPoliticsConstants(unittest.TestCase):
 
 
 # ─── 5. TEAM_ALIASES political entries ───────────────────────────────────────
+
 
 class TestPoliticsAliases(unittest.TestCase):
     """Verify political party / candidate aliases exist in TEAM_ALIASES."""
@@ -573,13 +606,14 @@ class TestPoliticsAliases(unittest.TestCase):
     def test_all_alias_values_are_lists_of_strings(self):
         """Every alias entry must be a list of non-empty strings."""
         for key, aliases in TEAM_ALIASES.items():
-            self.assertIsInstance(aliases, list,
-                f"TEAM_ALIASES['{key}'] must be a list")
+            self.assertIsInstance(
+                aliases, list, f"TEAM_ALIASES['{key}'] must be a list"
+            )
             for alias in aliases:
-                self.assertIsInstance(alias, str,
-                    f"Alias '{alias}' under '{key}' must be a str")
-                self.assertTrue(alias,
-                    f"Alias under '{key}' must be non-empty")
+                self.assertIsInstance(
+                    alias, str, f"Alias '{alias}' under '{key}' must be a str"
+                )
+                self.assertTrue(alias, f"Alias under '{key}' must be non-empty")
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

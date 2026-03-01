@@ -412,29 +412,31 @@ class ArbitrageEngine:
 
         # BF prices for this specific runner only
         bf_backs = [
-            o for o in bf_event.outcomes
+            o
+            for o in bf_event.outcomes
             if o.bookmaker == "Betfair Exchange" and o.name == runner_name
         ]
         bf_lays = [
-            o for o in bf_event.outcomes
+            o
+            for o in bf_event.outcomes
             if o.bookmaker == "Betfair Lay" and o.name == runner_name
         ]
         if not bf_backs:
             return []
 
         bf_back_price = max(o.price for o in bf_backs)
-        bf_lay_price  = max((o.price for o in bf_lays), default=None)
+        bf_lay_price = max((o.price for o in bf_lays), default=None)
 
         # PM binary prices: find YES / NO indices
         pm_outcomes = pm_binary_event.outcomes or []
-        pm_prices   = pm_binary_event.prices   or []
+        pm_prices = pm_binary_event.prices or []
         if len(pm_outcomes) < 2 or len(pm_prices) < 2:
             return []
 
         yes_idx = next((i for i, o in enumerate(pm_outcomes) if o.lower() == "yes"), 0)
-        no_idx  = 1 - yes_idx
-        pm_yes  = pm_prices[yes_idx]   # probability in [0, 1] that candidate wins
-        pm_no   = pm_prices[no_idx]    # probability in [0, 1] that candidate loses
+        no_idx = 1 - yes_idx
+        pm_yes = pm_prices[yes_idx]  # probability in [0, 1] that candidate wins
+        pm_no = pm_prices[no_idx]  # probability in [0, 1] that candidate loses
 
         if pm_yes <= 0 or pm_no <= 0:
             return []
@@ -447,12 +449,12 @@ class ArbitrageEngine:
         # Combined implied: 1/BF_back + PM_NO  (since PM_NO = the "no" leg)
         # Arb condition: 1/BF_back + PM_NO < 1  ↔  PM_YES > 1/BF_back
         if pm_yes > bf_implied:
-            raw_profit  = bf_back_price * pm_yes - 1.0
+            raw_profit = bf_back_price * pm_yes - 1.0
             denominator = 1.0 + bf_back_price * pm_no
-            profit_pct  = raw_profit / denominator * 100.0
+            profit_pct = raw_profit / denominator * 100.0
 
             if profit_pct > 0:
-                bf_stake   = 100.0 / denominator
+                bf_stake = 100.0 / denominator
                 pm_no_cost = 100.0 - bf_stake  # = bf_stake × BF_back × pm_no
 
                 synthetic = Event(
@@ -462,8 +464,12 @@ class ArbitrageEngine:
                     home_team=runner_name,
                     away_team="(all others)",
                     outcomes=[
-                        Outcome(runner_name,           bf_back_price, "Betfair Exchange", _dt.now()),
-                        Outcome(f"NO — {runner_name}", 1.0 / pm_no,  "Polymarket",       _dt.now()),
+                        Outcome(
+                            runner_name, bf_back_price, "Betfair Exchange", _dt.now()
+                        ),
+                        Outcome(
+                            f"NO — {runner_name}", 1.0 / pm_no, "Polymarket", _dt.now()
+                        ),
                     ],
                     category=bf_event.category,
                     description=(
@@ -474,30 +480,44 @@ class ArbitrageEngine:
                     ),
                     match_quality=similarity,
                 )
-                opps.append(ArbitrageOpportunity(
-                    event=synthetic,
-                    best_outcomes=[
-                        Outcome(runner_name,           bf_back_price, "Betfair Exchange", _dt.now()),
-                        Outcome(f"NO — {runner_name}", 1.0 / pm_no,  "Polymarket",       _dt.now()),
-                    ],
-                    total_stake=100.0,
-                    stake_distribution={
-                        f"Back {runner_name} (Betfair)":        round(bf_stake, 2),
-                        f"Buy NO — {runner_name} (Polymarket)": round(pm_no_cost, 2),
-                    },
-                    profit=100.0 * profit_pct / 100.0,
-                    profit_percentage=profit_pct,
-                    roi=profit_pct,
-                ))
+                opps.append(
+                    ArbitrageOpportunity(
+                        event=synthetic,
+                        best_outcomes=[
+                            Outcome(
+                                runner_name,
+                                bf_back_price,
+                                "Betfair Exchange",
+                                _dt.now(),
+                            ),
+                            Outcome(
+                                f"NO — {runner_name}",
+                                1.0 / pm_no,
+                                "Polymarket",
+                                _dt.now(),
+                            ),
+                        ],
+                        total_stake=100.0,
+                        stake_distribution={
+                            f"Back {runner_name} (Betfair)": round(bf_stake, 2),
+                            f"Buy NO — {runner_name} (Polymarket)": round(
+                                pm_no_cost, 2
+                            ),
+                        },
+                        profit=100.0 * profit_pct / 100.0,
+                        profit_percentage=profit_pct,
+                        roi=profit_pct,
+                    )
+                )
 
         # ── Strategy B: Lay BF + Buy YES on PM ───────────────────────────────
         if bf_lay_price and bf_lay_price > 1.0:
             lay_implied = 1.0 / bf_lay_price
             if pm_yes > lay_implied:
-                profit_pct   = (1.0 - lay_implied / pm_yes) * 100.0
+                profit_pct = (1.0 - lay_implied / pm_yes) * 100.0
                 if profit_pct > 0:
-                    pm_yes_dec   = 1.0 / pm_yes
-                    pm_stake     = 100.0 * lay_implied
+                    pm_yes_dec = 1.0 / pm_yes
+                    pm_stake = 100.0 * lay_implied
                     bf_lay_stake = 100.0 * pm_yes
 
                     synthetic = Event(
@@ -507,8 +527,15 @@ class ArbitrageEngine:
                         home_team=runner_name,
                         away_team="(all others)",
                         outcomes=[
-                            Outcome(f"YES — {runner_name}", pm_yes_dec,   "Polymarket",  _dt.now()),
-                            Outcome(runner_name,            bf_lay_price, "Betfair Lay", _dt.now()),
+                            Outcome(
+                                f"YES — {runner_name}",
+                                pm_yes_dec,
+                                "Polymarket",
+                                _dt.now(),
+                            ),
+                            Outcome(
+                                runner_name, bf_lay_price, "Betfair Lay", _dt.now()
+                            ),
                         ],
                         category=bf_event.category,
                         description=(
@@ -518,21 +545,32 @@ class ArbitrageEngine:
                         ),
                         match_quality=similarity,
                     )
-                    opps.append(ArbitrageOpportunity(
-                        event=synthetic,
-                        best_outcomes=[
-                            Outcome(f"YES — {runner_name}", pm_yes_dec,   "Polymarket",  _dt.now()),
-                            Outcome(runner_name,            bf_lay_price, "Betfair Lay", _dt.now()),
-                        ],
-                        total_stake=pm_stake + bf_lay_stake,
-                        stake_distribution={
-                            f"Buy YES — {runner_name} (Polymarket)": round(pm_stake, 2),
-                            f"Lay {runner_name} (Betfair)":          round(bf_lay_stake, 2),
-                        },
-                        profit=(pm_stake + bf_lay_stake) * (profit_pct / 100),
-                        profit_percentage=profit_pct,
-                        roi=profit_pct,
-                    ))
+                    opps.append(
+                        ArbitrageOpportunity(
+                            event=synthetic,
+                            best_outcomes=[
+                                Outcome(
+                                    f"YES — {runner_name}",
+                                    pm_yes_dec,
+                                    "Polymarket",
+                                    _dt.now(),
+                                ),
+                                Outcome(
+                                    runner_name, bf_lay_price, "Betfair Lay", _dt.now()
+                                ),
+                            ],
+                            total_stake=pm_stake + bf_lay_stake,
+                            stake_distribution={
+                                f"Buy YES — {runner_name} (Polymarket)": round(
+                                    pm_stake, 2
+                                ),
+                                f"Lay {runner_name} (Betfair)": round(bf_lay_stake, 2),
+                            },
+                            profit=(pm_stake + bf_lay_stake) * (profit_pct / 100),
+                            profit_percentage=profit_pct,
+                            roi=profit_pct,
+                        )
+                    )
 
         return opps
 

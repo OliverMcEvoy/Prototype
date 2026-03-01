@@ -439,7 +439,9 @@ class BetfairClient:
                 all_markets.extend(result)
                 # Debug: show the market types actually returned so the filter can be
                 # tuned if needed (visible in app.py sidebar caption and terminal).
-                types_seen = {m.get("description", {}).get("marketType", "?") for m in result}
+                types_seen = {
+                    m.get("description", {}).get("marketType", "?") for m in result
+                }
                 print(f"[BETFAIR POLITICS] market types in batch: {sorted(types_seen)}")
 
         print(f"[BETFAIR POLITICS] {len(all_markets)} markets found")
@@ -562,7 +564,9 @@ class BetfairClient:
             # to work with beyond just the runner names.
             market_name = market.get("marketName", "")
             event_obj = market.get("event") or {}
-            event_name = event_obj.get("name", "") if isinstance(event_obj, dict) else ""
+            event_name = (
+                event_obj.get("name", "") if isinstance(event_obj, dict) else ""
+            )
             desc_parts = [p for p in [event_name, market_name] if p and p.strip()]
             description = " — ".join(desc_parts) if desc_parts else None
 

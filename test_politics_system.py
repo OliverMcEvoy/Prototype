@@ -57,6 +57,7 @@ def _bf_client() -> BetfairClient:
 # 1. Betfair politics API
 # ---------------------------------------------------------------------------
 
+
 @unittest.skipUnless(_HAVE_CREDS, _SKIP_REASON)
 class TestBetfairPoliticsAPI(unittest.TestCase):
     """Live call to Betfair get_politics_markets()."""
@@ -78,9 +79,10 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
     def test_returns_at_least_one_market(self):
         """Betfair event type 2378961 must have at least one open market."""
         self.assertGreater(
-            len(self.markets), 0,
+            len(self.markets),
+            0,
             "No Betfair political markets returned — check event type ID 2378961 "
-            "is accessible on your account (browse betfair.com/exchange/plus/politics)"
+            "is accessible on your account (browse betfair.com/exchange/plus/politics)",
         )
 
     # ── data types ───────────────────────────────────────────────────────────
@@ -92,8 +94,9 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
     def test_all_events_have_politics_category(self):
         for m in self.markets:
             self.assertEqual(
-                m.category, "politics",
-                f"Market {m.id} has category='{m.category}', expected 'politics'"
+                m.category,
+                "politics",
+                f"Market {m.id} has category='{m.category}', expected 'politics'",
             )
 
     def test_all_events_have_string_id(self):
@@ -113,17 +116,19 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
         """
         for m in self.markets:
             self.assertGreaterEqual(
-                len(m.outcomes), 2,
-                f"Market {m.id} ({m.home_team}) has only {len(m.outcomes)} outcomes"
+                len(m.outcomes),
+                2,
+                f"Market {m.id} ({m.home_team}) has only {len(m.outcomes)} outcomes",
             )
 
     def test_all_outcomes_have_positive_prices(self):
         for m in self.markets:
             for o in m.outcomes:
                 self.assertGreater(
-                    o.price, 1.0,
+                    o.price,
+                    1.0,
                     f"Outcome '{o.name}' in {m.id} has price {o.price} ≤ 1.0 "
-                    "(invalid decimal odds)"
+                    "(invalid decimal odds)",
                 )
 
     def test_outcomes_have_betfair_bookmakers(self):
@@ -132,8 +137,9 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
         for m in self.markets:
             for o in m.outcomes:
                 self.assertIn(
-                    o.bookmaker, valid,
-                    f"Unexpected bookmaker '{o.bookmaker}' in market {m.id}"
+                    o.bookmaker,
+                    valid,
+                    f"Unexpected bookmaker '{o.bookmaker}' in market {m.id}",
                 )
 
     def test_commence_times_are_datetimes(self):
@@ -145,12 +151,13 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
         """
         for m in self.markets:
             self.assertIsInstance(
-                m.commence_time, datetime,
-                f"Market {m.id} commence_time is not a datetime"
+                m.commence_time,
+                datetime,
+                f"Market {m.id} commence_time is not a datetime",
             )
             self.assertIsNotNone(
                 m.commence_time.tzinfo,
-                f"Market {m.id} commence_time has no timezone info"
+                f"Market {m.id} commence_time has no timezone info",
             )
 
     def test_unique_market_ids(self):
@@ -174,6 +181,7 @@ class TestBetfairPoliticsAPI(unittest.TestCase):
 # 2. Polymarket politics API
 # ---------------------------------------------------------------------------
 
+
 class TestPolymarketPoliticsAPI(unittest.TestCase):
     """Live call to Polymarket get_politics_markets() — no credentials needed."""
 
@@ -188,22 +196,26 @@ class TestPolymarketPoliticsAPI(unittest.TestCase):
     def test_returns_at_least_one_market(self):
         """Polymarket must have at least one active political market."""
         self.assertGreater(
-            len(self.markets), 0,
+            len(self.markets),
+            0,
             "No Polymarket political markets returned — the API endpoint or "
-            "tag slugs may have changed"
+            "tag slugs may have changed",
         )
 
     # ── data types ───────────────────────────────────────────────────────────
 
     def test_all_items_are_polymarket_event_objects(self):
         for m in self.markets:
-            self.assertIsInstance(m, PolymarketEvent, f"Expected PolymarketEvent, got {type(m)}")
+            self.assertIsInstance(
+                m, PolymarketEvent, f"Expected PolymarketEvent, got {type(m)}"
+            )
 
     def test_all_events_have_politics_sport_category(self):
         for m in self.markets:
             self.assertEqual(
-                m.sport_category, "politics",
-                f"Market {m.id} has sport_category='{m.sport_category}'"
+                m.sport_category,
+                "politics",
+                f"Market {m.id} has sport_category='{m.sport_category}'",
             )
 
     def test_all_events_have_non_empty_question(self):
@@ -214,15 +226,17 @@ class TestPolymarketPoliticsAPI(unittest.TestCase):
     def test_all_events_have_at_least_one_outcome(self):
         for m in self.markets:
             self.assertGreaterEqual(
-                len(m.outcomes), 1,
-                f"Market {m.id} ('{m.question[:60]}') has no outcomes"
+                len(m.outcomes),
+                1,
+                f"Market {m.id} ('{m.question[:60]}') has no outcomes",
             )
 
     def test_outcomes_and_prices_same_length(self):
         for m in self.markets:
             self.assertEqual(
-                len(m.outcomes), len(m.prices),
-                f"Market {m.id}: {len(m.outcomes)} outcomes but {len(m.prices)} prices"
+                len(m.outcomes),
+                len(m.prices),
+                f"Market {m.id}: {len(m.outcomes)} outcomes but {len(m.prices)} prices",
             )
 
     def test_prices_are_valid_probabilities(self):
@@ -237,7 +251,9 @@ class TestPolymarketPoliticsAPI(unittest.TestCase):
 
     def test_unique_market_ids(self):
         ids = [m.id for m in self.markets]
-        self.assertEqual(len(ids), len(set(ids)), "Duplicate market IDs from Polymarket")
+        self.assertEqual(
+            len(ids), len(set(ids)), "Duplicate market IDs from Polymarket"
+        )
 
     def test_to_decimal_odds_does_not_crash(self):
         """to_decimal_odds() must work for every returned market."""
@@ -265,6 +281,7 @@ class TestPolymarketPoliticsAPI(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. End-to-end matching
 # ---------------------------------------------------------------------------
+
 
 @unittest.skipUnless(_HAVE_CREDS, _SKIP_REASON)
 class TestPoliticsMatchingEndToEnd(unittest.TestCase):
@@ -295,7 +312,9 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
 
         # ── Polymarket ───────────────────────────────────────────────────────
         cls.pm_client = PolymarketClient()
-        cls.pm_markets = cls.pm_client.get_politics_markets(active_only=True, min_volume=0)
+        cls.pm_markets = cls.pm_client.get_politics_markets(
+            active_only=True, min_volume=0
+        )
         print(f"[SYSTEM] Polymarket politics: {len(cls.pm_markets)} markets")
 
         if not cls.pm_markets:
@@ -321,7 +340,8 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
         event pairs across Betfair and Polymarket.
         """
         self.assertGreaterEqual(
-            len(self.matches), 2,
+            len(self.matches),
+            2,
             f"Expected ≥ 2 politics matches but only got {len(self.matches)}.\n"
             f"  Betfair markets  : {len(self.bf_markets)}\n"
             f"  Polymarket markets: {len(self.pm_markets)}\n"
@@ -329,7 +349,7 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
             + "\n".join(
                 f"  {score:.3f}  BF={bf.home_team}  PM={pm.question[:60]}"
                 for bf, pm, score in self.matches
-            )
+            ),
         )
 
     # ── result structure ──────────────────────────────────────────────────────
@@ -352,8 +372,9 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
         THRESHOLD = 0.30
         for bf_ev, pm_ev, score in self.matches:
             self.assertGreaterEqual(
-                score, THRESHOLD,
-                f"Match ({bf_ev.id}, {pm_ev.id}) has score {score:.3f} < {THRESHOLD}"
+                score,
+                THRESHOLD,
+                f"Match ({bf_ev.id}, {pm_ev.id}) has score {score:.3f} < {THRESHOLD}",
             )
 
     # ── deduplication ────────────────────────────────────────────────────────
@@ -361,15 +382,17 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
     def test_no_betfair_event_matched_twice(self):
         bf_ids = [bf.id for bf, _, _ in self.matches]
         self.assertEqual(
-            len(bf_ids), len(set(bf_ids)),
-            "Same Betfair event appeared in more than one match (dedup failed)"
+            len(bf_ids),
+            len(set(bf_ids)),
+            "Same Betfair event appeared in more than one match (dedup failed)",
         )
 
     def test_no_polymarket_event_matched_twice(self):
         pm_ids = [pm.id for _, pm, _ in self.matches]
         self.assertEqual(
-            len(pm_ids), len(set(pm_ids)),
-            "Same Polymarket event appeared in more than one match (dedup failed)"
+            len(pm_ids),
+            len(set(pm_ids)),
+            "Same Polymarket event appeared in more than one match (dedup failed)",
         )
 
     # ── category integrity ────────────────────────────────────────────────────
@@ -377,15 +400,17 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
     def test_matched_bf_events_have_politics_category(self):
         for bf_ev, _, _ in self.matches:
             self.assertEqual(
-                bf_ev.category, "politics",
-                f"Matched BF event {bf_ev.id} has category='{bf_ev.category}'"
+                bf_ev.category,
+                "politics",
+                f"Matched BF event {bf_ev.id} has category='{bf_ev.category}'",
             )
 
     def test_matched_pm_events_have_politics_category(self):
         for _, pm_ev, _ in self.matches:
             self.assertEqual(
-                pm_ev.sport_category, "politics",
-                f"Matched PM event {pm_ev.id} has sport_category='{pm_ev.sport_category}'"
+                pm_ev.sport_category,
+                "politics",
+                f"Matched PM event {pm_ev.id} has sport_category='{pm_ev.sport_category}'",
             )
 
     # ── arbitrage engine ──────────────────────────────────────────────────────
@@ -427,7 +452,9 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
             print(f"       Runners: {runners[:6]}")
             print(f"  PM : {pm_ev.question[:70]}")
             print(f"       Outcomes: {pm_ev.outcomes[:6]}")
-            print(f"       Volume: ${pm_ev.volume:,.0f}  |  Liquidity: ${pm_ev.liquidity:,.0f}")
+            print(
+                f"       Volume: ${pm_ev.volume:,.0f}  |  Liquidity: ${pm_ev.liquidity:,.0f}"
+            )
 
         if self.opportunities:
             print(f"\n{'─'*70}")
@@ -447,6 +474,7 @@ class TestPoliticsMatchingEndToEnd(unittest.TestCase):
 # 4. Data-pipeline regression: what goes in must be usable
 # ---------------------------------------------------------------------------
 
+
 @unittest.skipUnless(_HAVE_CREDS, _SKIP_REASON)
 class TestPoliticsDataPipelineRegression(unittest.TestCase):
     """
@@ -461,7 +489,9 @@ class TestPoliticsDataPipelineRegression(unittest.TestCase):
         if not bf.login():
             raise unittest.SkipTest(f"Betfair login failed: {bf.get_last_error()}")
         cls.bf_markets = bf.get_politics_markets(days_ahead=400)
-        cls.pm_markets = PolymarketClient().get_politics_markets(active_only=True, min_volume=0)
+        cls.pm_markets = PolymarketClient().get_politics_markets(
+            active_only=True, min_volume=0
+        )
 
     def test_bf_event_repr_does_not_crash(self):
         for m in self.bf_markets:
@@ -473,31 +503,35 @@ class TestPoliticsDataPipelineRegression(unittest.TestCase):
     def test_pm_event_to_decimal_odds_non_zero_prices(self):
         """to_decimal_odds() must return finite positive floats for non-zero prices."""
         import math
+
         for m in self.pm_markets:
             odds = m.to_decimal_odds()
             for i, (p, o) in enumerate(zip(m.prices, odds)):
                 if p > 0:
-                    self.assertGreater(o, 1.0, f"{m.id} outcome {i}: price {p} → odds {o}")
-                    self.assertFalse(math.isinf(o), f"{m.id} outcome {i}: infinite odds")
+                    self.assertGreater(
+                        o, 1.0, f"{m.id} outcome {i}: price {p} → odds {o}"
+                    )
+                    self.assertFalse(
+                        math.isinf(o), f"{m.id} outcome {i}: infinite odds"
+                    )
 
     def test_bf_market_ids_are_valid_betfair_format(self):
         """Betfair market IDs should look like '1.XXXXXXXXX'."""
         import re
+
         pattern = re.compile(r"^\d+\.\d+$")
         for m in self.bf_markets:
             self.assertRegex(
-                m.id, pattern,
-                f"Market ID '{m.id}' doesn't match Betfair format '1.XXXXXXXXX'"
+                m.id,
+                pattern,
+                f"Market ID '{m.id}' doesn't match Betfair format '1.XXXXXXXXX'",
             )
 
     def test_bf_runner_names_are_non_empty_strings(self):
         for m in self.bf_markets:
             for o in m.outcomes:
                 self.assertIsInstance(o.name, str)
-                self.assertTrue(
-                    o.name.strip(),
-                    f"Empty runner name in market {m.id}"
-                )
+                self.assertTrue(o.name.strip(), f"Empty runner name in market {m.id}")
 
     def test_pm_question_is_a_question(self):
         """
@@ -507,8 +541,9 @@ class TestPoliticsDataPipelineRegression(unittest.TestCase):
         """
         for m in self.pm_markets:
             self.assertGreater(
-                len(m.question), 5,
-                f"Suspiciously short question '{m.question}' for market {m.id}"
+                len(m.question),
+                5,
+                f"Suspiciously short question '{m.question}' for market {m.id}",
             )
 
 

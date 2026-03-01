@@ -760,7 +760,8 @@ class PolymarketClient:
                 ) or ""
 
                 event = PolymarketEvent(
-                    id=market_data.get("slug") or market_data.get("id", market_data.get("market_id", "")),
+                    id=market_data.get("slug")
+                    or market_data.get("id", market_data.get("market_id", "")),
                     question=market_data.get("question", market_data.get("title", "")),
                     outcomes=outcomes,
                     prices=prices,
