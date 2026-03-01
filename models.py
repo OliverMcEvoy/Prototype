@@ -48,6 +48,7 @@ class Outcome:
     price: float  # Decimal odds
     bookmaker: str
     last_update: datetime
+    volume: float = 0.0  # Available size at best price (Betfair) or total volume
 
 
 @dataclass
@@ -108,6 +109,7 @@ class PolymarketEvent:
     volume: float
     liquidity: float
     sport_category: str = ""  # Broad sport category, e.g. 'soccer', 'basketball'
+    event_slug: Optional[str] = None  # Parent event slug for URL (e.g. 'next-prime-minister-of-hungary')
 
     def to_decimal_odds(self) -> List[float]:
         """Convert Polymarket prices to decimal odds."""

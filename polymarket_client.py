@@ -225,6 +225,84 @@ class PolymarketClient:
         """Polymarket search API does not filter by query. Returns empty list."""
         return []
 
+    def get_politics_markets(
+        self,
+        active_only: bool = True,
+        min_volume: float = 0,
+    ) -> List[PolymarketEvent]:
+        """
+        Fetch Polymarket political prediction markets.
+
+        Uses two approaches and merges results:
+
+        1. /events endpoint with 'politics' tag — returns multi-outcome events
+           such as "Which party will win the House in 2026?" with outcomes
+           like ["Republican", "Democrat", "Other"].  This is the same
+           structure as sports events and is parsed by _parse_sports_event().
+
+        2. /markets endpoint with tag=Politics — returns individual binary
+           Yes/No markets.  These are also included so nothing is missed.
+           They are tagged sport_category="politics" and left as-is; the
+           matcher handles Yes/No binary political markets the same way it
+           handles binary tennis markets.
+
+        Args:
+            active_only: Only include active, non-resolved markets.
+            min_volume:  Minimum volume threshold.
+
+        Returns:
+            List of PolymarketEvent objects with sport_category='politics'.
+        """
+        seen_ids: set = set()
+        all_events: List[PolymarketEvent] = []
+
+        # ── Approach 1: /events with politics-related tag slugs ──────────────
+        _POLITICS_TAGS = ("politics", "us-politics", "elections", "political")
+        for tag in _POLITICS_TAGS:
+            params: dict = {
+                "limit": 200,
+                "tag_slug": tag,
+            }
+            if active_only:
+                params["active"] = "true"
+                params["closed"] = "false"
+            try:
+                resp = self.session.get(
+                    f"{self.base_url}/events", params=params, timeout=10
+                )
+                if not resp.ok:
+                    continue
+                data = resp.json() or []
+                for ev_data in data:
+                    pe = self._parse_sports_event(ev_data)
+                    if pe and pe.id not in seen_ids and pe.volume >= min_volume:
+                        pe.sport_category = "politics"
+                        all_events.append(pe)
+                        seen_ids.add(pe.id)
+            except Exception as e:
+                print(f"[POLITICS] /events error (tag={tag}): {e}")
+
+        print(f"[POLITICS] {len(all_events)} events from /events endpoint")
+
+        # ── Approach 2: /markets with Politics category tag ──────────────────
+        try:
+            url = f"{self.base_url}/markets"
+            params2: dict = {"limit": 500, "closed": not active_only, "tag": "Politics"}
+            resp2 = self.session.get(url, params=params2, timeout=10)
+            if resp2.ok:
+                binary_markets = self._parse_markets(resp2.json())
+                for m in binary_markets:
+                    if m.id not in seen_ids and m.volume >= min_volume:
+                        m.sport_category = "politics"
+                        all_events.append(m)
+                        seen_ids.add(m.id)
+                print(f"[POLITICS] +{len(binary_markets)} from /markets")
+        except Exception as e:
+            print(f"[POLITICS] /markets error: {e}")
+
+        print(f"[POLITICS] Total political markets: {len(all_events)}")
+        return all_events
+
     # -------------------------------------------------------------------------
     # SPORTS BETTING API  (completely separate from prediction market API above)
     # Individual match markets (e.g. "India vs West Indies") are ONLY here.
@@ -672,8 +750,17 @@ class PolymarketClient:
                     except ValueError:
                         pass
 
+                # Extract the parent event slug (e.g. 'next-prime-minister-of-hungary')
+                # so URLs point to the event page, not the individual market page.
+                _parent_events = market_data.get("events") or []
+                _parent_slug = (
+                    _parent_events[0].get("slug", "")
+                    if _parent_events and isinstance(_parent_events[0], dict)
+                    else ""
+                ) or ""
+
                 event = PolymarketEvent(
-                    id=market_data.get("id", market_data.get("market_id", "")),
+                    id=market_data.get("slug") or market_data.get("id", market_data.get("market_id", "")),
                     question=market_data.get("question", market_data.get("title", "")),
                     outcomes=outcomes,
                     prices=prices,
@@ -684,6 +771,7 @@ class PolymarketClient:
                     liquidity=float(
                         market_data.get("liquidity", market_data.get("liquidityNum", 0))
                     ),
+                    event_slug=_parent_slug or None,
                 )
 
                 # Only add if we have valid data

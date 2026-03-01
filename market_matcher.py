@@ -18,6 +18,67 @@ from models import Event, PolymarketEvent, Outcome
 from config import Config
 
 
+# ---------------------------------------------------------------------------
+# Region / country vocabulary for politics cross-platform conflict detection.
+# Each key is the canonical region name; the set is all tokens that identify it.
+# A BF market and PM market mentioning DIFFERENT regions are rejected.
+# ---------------------------------------------------------------------------
+_REGION_MAP: Dict[str, set] = {
+    "us":          {"us", "usa", "united states", "american", "america", "u.s."},
+    "uk":          {"uk", "united kingdom", "britain", "british", "england", "english",
+                    "scotland", "scottish", "wales", "welsh", "u.k."},
+    "hungary":     {"hungary", "hungarian"},
+    "france":      {"france", "french"},
+    "germany":     {"germany", "german", "deutschland"},
+    "australia":   {"australia", "australian"},
+    "canada":      {"canada", "canadian"},
+    "italy":       {"italy", "italian"},
+    "spain":       {"spain", "spanish"},
+    "ireland":     {"ireland", "irish"},
+    "poland":      {"poland", "polish"},
+    "brazil":      {"brazil", "brazilian"},
+    "india":       {"india", "indian"},
+    "turkey":      {"turkey", "turkish"},
+    "israel":      {"israel", "israeli"},
+    "ukraine":     {"ukraine", "ukrainian"},
+    "russia":      {"russia", "russian"},
+    "china":       {"china", "chinese"},
+    "japan":       {"japan", "japanese"},
+    "south korea": {"south korea", "korean"},
+    "mexico":      {"mexico", "mexican"},
+    "argentina":   {"argentina", "argentinian", "argentinean"},
+    "sweden":      {"sweden", "swedish"},
+    "norway":      {"norway", "norwegian"},
+    "denmark":     {"denmark", "danish"},
+    "finland":     {"finland", "finnish"},
+    "netherlands": {"netherlands", "dutch", "holland"},
+    "belgium":     {"belgium", "belgian"},
+    "switzerland": {"switzerland", "swiss"},
+    "austria":     {"austria", "austrian"},
+    "portugal":    {"portugal", "portuguese"},
+    "greece":      {"greece", "greek"},
+    "romania":     {"romania", "romanian"},
+    "new zealand": {"new zealand"},
+    "south africa":{"south africa"},
+    "pakistan":    {"pakistan", "pakistani"},
+    "indonesia":   {"indonesia", "indonesian"},
+    "philippines": {"philippines", "philippine"},
+    "taiwan":      {"taiwan", "taiwanese"},
+    "slovakia":    {"slovakia", "slovak"},
+    "czechia":     {"czechia", "czech republic", "czech"},
+}
+
+
+def _extract_regions(text: str) -> set:
+    """Return set of canonical region keys mentioned in *text*."""
+    t = text.lower()
+    found = set()
+    for region, aliases in _REGION_MAP.items():
+        if any(a in t for a in aliases):
+            found.add(region)
+    return found
+
+
 # Team name alias table. Maps variant → canonical for fuzzy matching.
 # Add entries here when match_debug.txt shows missed matches.
 TEAM_ALIASES: Dict[str, List[str]] = {
@@ -102,6 +163,21 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "bangladesh": ["ban"],
     # Draw / tie
     "draw": ["the draw", "tie", "drawn", "x"],
+    # ── Political parties & entities ──────────────────────────────────────────
+    # US parties
+    "republican party": ["republican", "republicans", "gop", "rep", "reds"],
+    "democratic party": ["democrat", "democrats", "democratic", "dem", "dems", "blue"],
+    "green party": ["greens", "green"],
+    "libertarian party": ["libertarian", "libertarians"],
+    # UK parties
+    "labour party": ["labour", "labor"],
+    "conservative party": ["conservative", "conservatives", "tory", "tories", "con"],
+    "liberal democrats": ["lib dems", "libdems", "lib dem", "ld"],
+    "reform uk": ["reform"],
+    "snp": ["scottish national party", "scotland"],
+    # Outcomes / generic political result names
+    "no majority": ["no overall majority", "hung parliament", "split", "no winner"],
+    "other": ["field", "others", "all others", "third party"],
     # Basketball — NBA (Polymarket uses nickname only; Betfair uses full city+name)
     "atlanta hawks": ["hawks"],
     "brooklyn nets": ["nets"],
@@ -275,7 +351,10 @@ class MarketMatcher:
             candidates = poly_by_sport.get(sport_key) or polymarket_events
 
             # Date pre-filter: PM end_date within ±3 days of BF commence_time
-            if trad_event.commence_time:
+            # Politics events are exempt from the date filter (elections are months
+            # away but still need to be matched).
+            is_politics = sport_key == "politics"
+            if trad_event.commence_time and not is_politics:
                 bf_time = trad_event.commence_time
                 if bf_time.tzinfo is None:
                     bf_time = bf_time.replace(tzinfo=timezone.utc)
@@ -320,6 +399,285 @@ class MarketMatcher:
             f"({len(matched_bfids)} unique Betfair events)"
         )
         return matches
+
+    def find_politics_matches(
+        self,
+        bf_events: List[Event],
+        pm_events: List[PolymarketEvent],
+    ) -> List[Tuple[Event, PolymarketEvent, float]]:
+        """
+        Match political prediction markets across Betfair and Polymarket.
+
+        Key differences from sports matching:
+          - No date filter (elections can be months away)
+          - Scored by keyword + candidate/party name overlap, not team presence
+          - Lower default threshold (0.30) since political text is noisier
+        """
+        POLITICS_THRESHOLD = 0.30
+
+        all_pairs: List[Tuple[Event, PolymarketEvent, float]] = []
+        for bf_ev in bf_events:
+            for pm_ev in pm_events:
+                score = self._calculate_politics_similarity(bf_ev, pm_ev)
+                if score >= POLITICS_THRESHOLD:
+                    all_pairs.append((bf_ev, pm_ev, score))
+
+        all_pairs.sort(key=lambda x: x[2], reverse=True)
+
+        used_bf: set = set()
+        used_pm: set = set()
+        matches: List[Tuple[Event, PolymarketEvent, float]] = []
+        for bf_ev, pm_ev, score in all_pairs:
+            if bf_ev.id not in used_bf and pm_ev.id not in used_pm:
+                matches.append((bf_ev, pm_ev, score))
+                used_bf.add(bf_ev.id)
+                used_pm.add(pm_ev.id)
+
+        print(f"[POLITICS MATCHING] {len(matches)} political pairs matched")
+        return matches
+
+    def _calculate_politics_similarity(
+        self, bf_ev: Event, pm_ev: PolymarketEvent
+    ) -> float:
+        """
+        Score a Betfair political market against a Polymarket political event.
+
+        Signals:
+          1. Candidate/party overlap: fraction of BF runner names found in PM text
+          2. Keyword overlap (Jaccard): topic words like 'house', 'senate',
+             'president', '2026' shared between both platforms
+          3. Outcome name match: PM outcome names found in BF runner list
+        """
+        # Build searchable text from each platform
+        bf_runner_names = [
+            o.name for o in bf_ev.outcomes if o.bookmaker == "Betfair Exchange"
+        ]
+        # Include the Betfair market/event name (description) so district codes
+        # like "CA-22" captured from the market name are available for matching.
+        bf_all_text = self._normalise(
+            f"{bf_ev.description or ''} {bf_ev.sport} "
+            f"{bf_ev.home_team} {bf_ev.away_team} "
+            + " ".join(bf_runner_names)
+        )
+
+        pm_all_text = self._normalise(
+            pm_ev.question + " " + " ".join(pm_ev.outcomes or [])
+        )
+
+        if not bf_all_text or not pm_all_text:
+            return 0.0
+
+        # ---- Signal 0: US congressional district code match ----
+        # Extracts patterns like "CA-22", "CA 22", "TX 3" from raw text.
+        # A matching district code is extremely high-confidence (same race).
+        _DIST_RE = re.compile(r'\b([A-Z]{2})[\s\-]?(\d{1,2})\b')
+
+        def _districts(raw: str) -> set:
+            return {
+                (m.group(1), m.group(2).lstrip('0') or '0')
+                for m in _DIST_RE.finditer(raw)
+            }
+
+        bf_raw = (
+            f"{bf_ev.description or ''} {bf_ev.home_team} {bf_ev.away_team} "
+            + " ".join(bf_runner_names)
+        )
+        pm_raw = pm_ev.question or ""
+        bf_dists = _districts(bf_raw)
+        pm_dists = _districts(pm_raw)
+        district_match = bool(bf_dists and pm_dists and bf_dists & pm_dists)
+
+        # ---- Signal 1: candidate / party name overlap ----
+        # How many BF runners appear (by canonical form or alias) in PM text?
+        runners_matched = 0
+        for r in bf_runner_names:
+            r_can = _canonicalise(r)
+            # Direct or alias match
+            if r.lower() in pm_all_text or r_can in pm_all_text:
+                runners_matched += 1
+                continue
+            # Alias check
+            for alias in TEAM_ALIASES.get(r_can, []):
+                if alias in pm_all_text:
+                    runners_matched += 1
+                    break
+            else:
+                # Partial token match (e.g. 'republican' in 'republican party')
+                tokens = [t for t in re.split(r"[\s\-/]+", r.lower()) if len(t) > 3]
+                if tokens and all(t in pm_all_text for t in tokens):
+                    runners_matched += 1
+
+        runner_ratio = runners_matched / len(bf_runner_names) if bf_runner_names else 0.0
+
+        # ---- Signal 2: keyword (Jaccard) overlap ----
+        _POL_STOP = {
+            "will", "the", "who", "win", "wins", "which", "party", "candidate",
+            "election", "next", "get", "control", "majority", "seat", "seats",
+            "yes", "no", "and", "or", "in", "of", "for", "be", "at", "to",
+        }
+        bf_tokens = {w for w in bf_all_text.split() if len(w) > 2 and w not in _POL_STOP}
+        pm_tokens = {w for w in pm_all_text.split() if len(w) > 2 and w not in _POL_STOP}
+        jaccard = (
+            len(bf_tokens & pm_tokens) / len(bf_tokens | pm_tokens)
+            if bf_tokens and pm_tokens
+            else 0.0
+        )
+
+        # ---- Signal 3: PM outcome names found in BF runner list ----
+        pm_outcomes_matched = 0
+        for pm_out in pm_ev.outcomes or []:
+            pm_can = _canonicalise(pm_out)
+            if pm_out.lower() in {"yes", "no"}:
+                continue  # skip Yes/No — not informative
+            if pm_out.lower() in bf_all_text or pm_can in bf_all_text:
+                pm_outcomes_matched += 1
+                continue
+            for alias in TEAM_ALIASES.get(pm_can, []):
+                if alias in bf_all_text:
+                    pm_outcomes_matched += 1
+                    break
+        pm_outcomes = [o for o in (pm_ev.outcomes or []) if o.lower() not in {"yes", "no"}]
+        outcome_ratio = pm_outcomes_matched / len(pm_outcomes) if pm_outcomes else 0.0
+
+        # ---- Region / country conflict check ----
+        # If BF and PM unambiguously identify DIFFERENT countries, they cannot
+        # be the same market (e.g. US house race vs Hungarian prime minister).
+        bf_regions = _extract_regions(bf_raw + " " + bf_all_text)
+        pm_regions = _extract_regions(pm_raw + " " + pm_all_text)
+        if bf_regions and pm_regions and not (bf_regions & pm_regions):
+            return 0.0
+
+        score = runner_ratio * 0.45 + jaccard * 0.30 + outcome_ratio * 0.25
+
+        # District match is near-certain proof of the same race — boost to at
+        # least 0.75 so it clears the 0.30 threshold even when runner names
+        # differ between platforms (e.g. Betfair has candidate names,
+        # Polymarket has party names).
+        if district_match:
+            score = max(score, 0.75)
+
+        return min(score, 1.0)
+
+    def find_candidate_binary_matches(
+        self,
+        bf_events: List[Event],
+        pm_events: List[PolymarketEvent],
+    ) -> List[Tuple[Event, str, PolymarketEvent, float]]:
+        """
+        For Betfair politics markets with MORE than 2 runners (multi-candidate
+        primaries / elections), match each individual runner against a Polymarket
+        binary YES/NO market that specifically asks about THAT candidate.
+
+        Only triggered when:
+          - The BF market has >2 distinct runners  (binary races use standard system)
+          - The PM market has exactly 2 outcomes, both in {"Yes", "No"}
+
+        Returns: [(bf_event, runner_name, pm_event, score), ...]
+        Each tuple means: runner_name in bf_event ↔ the YES outcome of pm_event.
+        """
+        _BINARY = {"yes", "no"}
+        _DIST_RE = re.compile(r'\b([A-Z]{2})[\s\-]?(\d{1,2})\b')
+        _KSTOP = {
+            "will", "the", "win", "wins", "who", "which", "seat", "party",
+            "race", "election", "for", "and", "run", "primary", "general",
+        }
+
+        def _dist_codes(text: str) -> set:
+            return {
+                (m.group(1), m.group(2).lstrip('0') or '0')
+                for m in _DIST_RE.finditer(text)
+            }
+
+        # Pre-filter: only pure YES/NO binary Polymarket markets
+        binary_pm = [
+            pm for pm in pm_events
+            if len(pm.outcomes or []) == 2
+            and all(o.lower() in _BINARY for o in (pm.outcomes or []))
+        ]
+
+        used_pm: set = set()
+        results: List[Tuple[Event, str, PolymarketEvent, float]] = []
+
+        for bf_ev in bf_events:
+            bf_runners = list({
+                o.name for o in bf_ev.outcomes if o.bookmaker == "Betfair Exchange"
+            })
+            # Only multi-candidate races (>2 runners) — binary races use standard system
+            if len(bf_runners) <= 2:
+                continue
+
+            bf_ctx_raw  = f"{bf_ev.description or ''} {bf_ev.home_team} {bf_ev.away_team}"
+            bf_dists    = _dist_codes(bf_ctx_raw)
+            bf_ctx_norm = self._normalise(bf_ctx_raw)
+            bf_kw       = {w for w in bf_ctx_norm.split() if len(w) > 3 and w not in _KSTOP}
+            bf_regions  = _extract_regions(bf_ctx_raw)
+
+            for runner in bf_runners:
+                runner_can    = _canonicalise(runner)
+                runner_tokens = [t for t in re.split(r'[\s\-/]+', runner.lower()) if len(t) > 2]
+
+                # Gate: require at least £2 available on BOTH back and lay for this runner
+                back_vol = next(
+                    (o.volume for o in bf_ev.outcomes
+                     if o.bookmaker == "Betfair Exchange" and o.name == runner), 0.0
+                )
+                lay_vol = next(
+                    (o.volume for o in bf_ev.outcomes
+                     if o.bookmaker == "Betfair Lay" and o.name == runner), 0.0
+                )
+                if back_vol < 2.0 or lay_vol < 2.0:
+                    continue
+
+                best_pm: Optional[PolymarketEvent] = None
+                best_score = 0.0
+
+                for pm_ev in binary_pm:
+                    if pm_ev.id in used_pm:
+                        continue
+
+                    pm_q      = pm_ev.question or ""
+                    pm_q_norm = self._normalise(pm_q)
+
+                    # Region / country conflict — skip immediately if unambiguous mismatch
+                    pm_regions = _extract_regions(pm_q)
+                    if bf_regions and pm_regions and not (bf_regions & pm_regions):
+                        continue
+
+                    # Primary: runner name must appear in the PM question
+                    score = 0.0
+                    if runner.lower() in pm_q_norm or runner_can in pm_q_norm:
+                        score += 0.6
+                    elif runner_tokens and all(t in pm_q_norm for t in runner_tokens):
+                        score += 0.4
+                    else:
+                        for alias in TEAM_ALIASES.get(runner_can, []):
+                            if alias in pm_q_norm:
+                                score += 0.4
+                                break
+
+                    if score == 0.0:
+                        continue  # candidate not mentioned — skip
+
+                    # Bonus: matching district/constituency code
+                    pm_dists = _dist_codes(pm_q)
+                    if bf_dists and pm_dists and bf_dists & pm_dists:
+                        score += 0.4
+
+                    # Bonus: shared election context keywords (state, year, etc.)
+                    pm_kw = {w for w in pm_q_norm.split() if len(w) > 3 and w not in _KSTOP}
+                    score += min(0.2, len(bf_kw & pm_kw) * 0.05)
+
+                    score = min(score, 1.0)
+                    if score > best_score:
+                        best_score = score
+                        best_pm = pm_ev
+
+                if best_pm is not None and best_score >= 0.5 and best_pm.id not in used_pm:
+                    results.append((bf_ev, runner, best_pm, best_score))
+                    used_pm.add(best_pm.id)
+
+        print(f"[POLITICS MATCHING] {len(results)} candidate-binary pairs matched")
+        return results
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -23,7 +23,8 @@ class Config:
     )
 
     SHARED_SPORTS = {
-        "All Sports": "all",
+        "All": "all",
+        "Politics": "politics",
         "Soccer": "soccer",
         "Cricket": "cricket",
         "Tennis": "tennis",

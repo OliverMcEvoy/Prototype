@@ -32,9 +32,14 @@ class BetfairClient:
         "mma": "26420387",
     }
 
+    # Politics has its own event type handled separately via get_politics_markets()
+    POLITICS_EVENT_TYPE_ID = "2378961"
+
     BETFAIR_TO_POLYMARKET: Dict[str, str] = {
         v: k for k, v in POLYMARKET_TO_BETFAIR.items()
     }
+    # Add politics separately so _build_events assigns correct category
+    BETFAIR_TO_POLYMARKET["2378961"] = "politics"
 
     BETFAIR_SPORT_NAMES: Dict[str, str] = {
         "1": "Soccer",
@@ -46,6 +51,7 @@ class BetfairClient:
         "7511": "Baseball",
         "7524": "Ice Hockey",
         "26420387": "MMA",
+        "2378961": "Politics",
     }
 
     UI_SPORT_OPTIONS: Dict[str, str] = {
@@ -366,6 +372,88 @@ class BetfairClient:
         """Betfair has no fixed request quota."""
         return None
 
+    def get_politics_markets(self, days_ahead: int = 400) -> List[Event]:
+        """
+        Fetch political prediction markets from Betfair Exchange.
+
+        Uses event type 2378961 (Politics) with WINNER / OUTRIGHT_WINNER /
+        NEXT_WINNER market types, which are the standard types for political
+        markets on Betfair (not MATCH_ODDS which is sports-only).
+
+        Args:
+            days_ahead: How far ahead to scan (default 400 days to cover
+                        elections that are months away).
+
+        Returns:
+            List of Event objects with category='politics'.
+        """
+        if not self._ensure_logged_in():
+            return []
+
+        now = datetime.now(timezone.utc)
+        end_time = now + timedelta(days=days_ahead)
+
+        params = {
+            "filter": {
+                "eventTypeIds": [self.POLITICS_EVENT_TYPE_ID],
+                "marketStartTime": {
+                    "from": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "to": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+            },
+            "maxResults": 1000,
+            "sort": "OPEN_DATE",
+        }
+        raw_events = self._api_call("listEvents", params) or []
+        print(f"[BETFAIR POLITICS] {len(raw_events)} events found")
+        if not raw_events:
+            return []
+
+        event_ids = [e["event"]["id"] for e in raw_events if "event" in e]
+
+        all_markets: List[dict] = []
+        for i in range(0, len(event_ids), 500):
+            batch = event_ids[i : i + 500]
+            result = self._api_call(
+                "listMarketCatalogue",
+                {
+                    "filter": {
+                        "eventIds": batch,
+                        # No marketTypeCodes filter — political markets use a wide
+                        # variety of types (WINNER, OUTRIGHT_WINNER, NEXT_WINNER,
+                        # SPECIAL, MATCH_ODDS, etc.) that vary by region and event.
+                        # Filtering by type would silently exclude valid markets.
+                    },
+                    "marketProjection": [
+                        "EVENT",
+                        "RUNNER_DESCRIPTION",
+                        "MARKET_START_TIME",
+                        "EVENT_TYPE",
+                        "MARKET_DESCRIPTION",
+                    ],
+                    "maxResults": 1000,
+                    "sort": "FIRST_TO_START",
+                },
+            )
+            if result:
+                all_markets.extend(result)
+                # Debug: show the market types actually returned so the filter can be
+                # tuned if needed (visible in app.py sidebar caption and terminal).
+                types_seen = {m.get("description", {}).get("marketType", "?") for m in result}
+                print(f"[BETFAIR POLITICS] market types in batch: {sorted(types_seen)}")
+
+        print(f"[BETFAIR POLITICS] {len(all_markets)} markets found")
+        if not all_markets:
+            return []
+
+        market_ids = [m["marketId"] for m in all_markets]
+        books = self._list_market_book(market_ids)
+        book_index = {b["marketId"]: b for b in books}
+
+        events = self._build_events(all_markets, book_index)
+        print(f"[BETFAIR POLITICS] {len(events)} valid political markets with odds")
+        return events
+
     # ------------------------------------------------ model building
 
     def _build_events(
@@ -414,13 +502,14 @@ class BetfairClient:
 
                 ex = runner_book.get("ex", {})
 
-                # Best available BACK price
+                # Best available BACK price and available size
                 available_to_back = ex.get("availableToBack", [])
                 best_back = (
                     float(available_to_back[0].get("price", 0.0))
                     if available_to_back
                     else 0.0
                 )
+                back_size = sum(float(l.get("size", 0.0)) for l in available_to_back)
 
                 # Best available LAY price (what the market will accept to lay)
                 available_to_lay = ex.get("availableToLay", [])
@@ -429,6 +518,7 @@ class BetfairClient:
                     if available_to_lay
                     else 0.0
                 )
+                lay_size = sum(float(l.get("size", 0.0)) for l in available_to_lay)
 
                 if best_back <= 1.0 and best_lay <= 1.0:
                     continue  # No usable prices at all
@@ -440,6 +530,7 @@ class BetfairClient:
                             price=best_back,
                             bookmaker="Betfair Exchange",
                             last_update=datetime.now(timezone.utc),
+                            volume=back_size,
                         )
                     )
 
@@ -453,6 +544,7 @@ class BetfairClient:
                             price=best_lay,
                             bookmaker="Betfair Lay",
                             last_update=datetime.now(timezone.utc),
+                            volume=lay_size,
                         )
                     )
 
@@ -465,6 +557,15 @@ class BetfairClient:
 
             poly_sport = self.BETFAIR_TO_POLYMARKET.get(event_type_id, "sports")
 
+            # Capture market name + parent event name so downstream text
+            # matching (especially district codes like "CA-22") has something
+            # to work with beyond just the runner names.
+            market_name = market.get("marketName", "")
+            event_obj = market.get("event") or {}
+            event_name = event_obj.get("name", "") if isinstance(event_obj, dict) else ""
+            desc_parts = [p for p in [event_name, market_name] if p and p.strip()]
+            description = " — ".join(desc_parts) if desc_parts else None
+
             events.append(
                 Event(
                     id=market_id,
@@ -474,6 +575,7 @@ class BetfairClient:
                     away_team=runner_names[1],
                     outcomes=outcomes,
                     category=poly_sport,
+                    description=description,
                 )
             )
 
