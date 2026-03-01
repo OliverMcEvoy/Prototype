@@ -272,16 +272,27 @@ class PolymarketClient:
         all_events: List[PolymarketEvent] = []
         for sport_entry in relevant_series:
             series_id = sport_entry.get("series")
-            if not series_id:
+            # Skip entries with no ID or placeholder "TBD" (causes 422 error)
+            if not series_id or str(series_id).strip().upper() == "TBD":
                 continue
+            sport_code = sport_entry.get("sport", "")
+            sport_category = self._code_to_category(sport_code)
             raw_events = self._fetch_series_events(series_id, active_only=active_only)
             for event_data in raw_events:
                 poly_event = self._parse_sports_event(event_data)
                 if poly_event and poly_event.volume >= min_volume:
+                    poly_event.sport_category = sport_category
                     all_events.append(poly_event)
 
         print(f"[SPORTS API] Total sports match events: {len(all_events)}")
         return all_events
+
+    def _code_to_category(self, sport_code: str) -> str:
+        """Map a Polymarket sport code (e.g. 'epl', 'nba') to a broad category."""
+        for category, codes in self.SPORT_CODE_MAP.items():
+            if sport_code in codes:
+                return category
+        return ""
 
     def _get_sports_series(self) -> List[dict]:
         """Fetch and cache the list of all Polymarket sport series from /sports."""
@@ -371,93 +382,193 @@ class PolymarketClient:
 
     def _parse_sports_event(self, event_data: dict) -> Optional[PolymarketEvent]:
         """
-        Convert a Polymarket sports event (from /events?series_id=X) into a PolymarketEvent.
+        Convert a Polymarket sports event into a PolymarketEvent.
 
-        Each event can have multiple markets (match-winner, toss, most-sixes, etc.).
-        We only keep the primary match-winner market.
+        Polymarket sports events come in two structural forms:
+
+        Form A — multi-outcome market (tennis, basketball, hockey, etc.):
+          Single market with outcomes like ["Nuggets", "Grizzlies"] or
+          ["Stricker", "Grenier"]. Used as-is.
+
+        Form B — per-outcome binary markets (soccer, rugby, etc.):
+          Three separate binary Yes/No markets:
+            "Will Arsenal win?"                    → Yes price = Arsenal win prob
+            "Will Arsenal vs Chelsea end in a draw?" → Yes price = Draw prob
+            "Will Chelsea win?"                    → Yes price = Chelsea win prob
+          These are reconstructed into a single synthetic 3-outcome market.
         """
         import json as _json
+        import re as _re
 
         slug = event_data.get("slug", "")
         title = event_data.get("title", "")
 
-        # Skip secondary sub-markets that are grouped under the main event slug
-        skip_slug_keywords = [
+        _SLUG_SKIP = [
             "toss-match",
             "most-sixes",
             "team-top-batter",
             "more-markets",
             "completed",
         ]
-        if any(kw in slug for kw in skip_slug_keywords):
+        if any(kw in slug for kw in _SLUG_SKIP):
             return None
+
+        # Sub-market keywords — skip these regardless of form
+        _SUB_KWS = [
+            "who wins the toss",
+            "most sixes",
+            "top batter",
+            "completed match",
+            "toss?",
+            "set 1",
+            "set 2",
+            "set 3",
+            "o/u",
+            "over/under",
+            "spread:",
+            "correct score",
+            "first goal",
+            "first scorer",
+            "half time",
+            "halftime",
+            "ht/ft",
+            "half-time",
+            "yellow card",
+            "red card",
+            "total goals",
+            "both teams to score",
+        ]
+        _BINARY = {"yes", "no"}
+        _DRAW_KWS = ("draw", "tie")
+        _WIN_RE = _re.compile(r"will\s+(.+?)\s+win\b", _re.IGNORECASE)
+
+        def _parse_outcomes_prices(m):
+            """Return (outcomes list, prices list) or (None, None) on failure."""
+            try:
+                outs_raw = m.get("outcomes", [])
+                outs = (
+                    _json.loads(outs_raw)
+                    if isinstance(outs_raw, str)
+                    else list(outs_raw)
+                )
+            except Exception:
+                return None, None
+            try:
+                p_raw = m.get("outcomePrices", [])
+                prices = [
+                    float(p)
+                    for p in (_json.loads(p_raw) if isinstance(p_raw, str) else p_raw)
+                ]
+            except Exception:
+                return None, None
+            return outs, prices
 
         markets = event_data.get("markets", [])
-        main_market = None
+        ref_market = None  # used for date/volume extraction
+        outcomes = None
+        prices = None
+
+        # --- Path A: look for a non-binary match-result market ---
         for m in markets:
-            if m.get("closed", False):
-                continue
-            if not m.get("active", True):
+            if m.get("closed", False) or not m.get("active", True):
                 continue
             q = m.get("question", "").lower()
-            # Skip sub-markets that appear inside the event
-            if any(
-                kw in q
-                for kw in [
-                    "who wins the toss",
-                    "most sixes",
-                    "top batter",
-                    "completed match",
-                    "toss?",
-                ]
-            ):
+            if any(kw in q for kw in _SUB_KWS):
                 continue
-            main_market = m
-            break
+            outs, ps = _parse_outcomes_prices(m)
+            if outs is None or len(outs) < 2 or not ps:
+                continue
+            if not all(o.lower() in _BINARY for o in outs):
+                ref_market = m
+                outcomes = outs
+                prices = ps
+                break
 
-        if not main_market:
-            return None
+        if outcomes is not None:
+            # Non-binary market found — straightforward case (tennis/basketball/hockey)
+            pass
 
-        # Parse outcomes (JSON string → list)
-        outcomes_raw = main_market.get("outcomes", [])
-        prices_raw = main_market.get("outcomePrices", [])
-        try:
-            outcomes = (
-                _json.loads(outcomes_raw)
-                if isinstance(outcomes_raw, str)
-                else list(outcomes_raw)
-            )
-        except Exception:
-            return None
-        try:
-            prices_parsed = (
-                _json.loads(prices_raw)
-                if isinstance(prices_raw, str)
-                else list(prices_raw)
-            )
-            prices = [float(p) for p in prices_parsed]
-        except Exception:
-            return None
+        else:
+            # --- Path B: reconstruct multi-outcome from binary per-outcome markets ---
+            # Soccer: "Will Arsenal win?" + "Will match end in a draw?" + "Will Chelsea win?"
+            # Rugby:  same structure
+            win_outcomes = []  # [(team_name, yes_price, market)]
+            draw_price = None
 
-        if not outcomes or len(outcomes) < 2 or not prices:
-            return None
-
-        # Parse end/game date
-        end_date = None
-        for date_field in ("endDateIso", "endDate", "gameStartTime"):
-            date_str = event_data.get(date_field) or main_market.get(date_field)
-            if date_str:
-                try:
-                    end_date = datetime.fromisoformat(
-                        str(date_str).replace("Z", "+00:00")
-                    )
-                    break
-                except Exception:
+            for m in markets:
+                if m.get("closed", False) or not m.get("active", True):
                     continue
+                q_raw = m.get("question", "")
+                q = q_raw.lower()
+                if any(kw in q for kw in _SUB_KWS):
+                    continue
+                outs, ps = _parse_outcomes_prices(m)
+                if outs is None or len(outs) < 2 or not ps:
+                    continue
+                if not all(o.lower() in _BINARY for o in outs):
+                    continue  # already handled above
 
-        volume = float(main_market.get("volumeNum") or main_market.get("volume") or 0)
-        liquidity = float(
-            main_market.get("liquidityNum") or main_market.get("liquidity") or 0
+                # Get the "Yes" price
+                try:
+                    yes_idx = [o.lower() for o in outs].index("yes")
+                    yes_price = ps[yes_idx]
+                except (ValueError, IndexError):
+                    yes_price = ps[0]
+
+                if any(kw in q for kw in _DRAW_KWS):
+                    draw_price = yes_price
+                    if ref_market is None:
+                        ref_market = m
+                else:
+                    m_win = _WIN_RE.search(q_raw)
+                    if m_win:
+                        team = m_win.group(1).strip()
+                        win_outcomes.append((team, yes_price, m))
+                        if ref_market is None:
+                            ref_market = m
+
+            if len(win_outcomes) < 2:
+                return None
+
+            # Build synthetic outcomes: [TeamA, TeamB] + optional Draw
+            outcomes = [t for t, _, _ in win_outcomes]
+            prices = [p for _, p, _ in win_outcomes]
+            if draw_price is not None:
+                outcomes.append("Draw")
+                prices.append(draw_price)
+
+        if outcomes is None or len(outcomes) < 2 or not prices:
+            return None
+        if ref_market is None:
+            ref_market = markets[0] if markets else {}
+
+        # Parse event date.
+        # Priority: startTime (actual match start) > gameStartTime (market-level
+        # match start) > endDate (tournament end — too late for tennis/golf) >
+        # endDateIso (fallback).
+        # Using the match start time is critical for the date pre-filter in
+        # MarketMatcher.find_matches(), which allows ±3 days.  Tournament endDate
+        # can be 5-7 days after the match, which blows the filter.
+        end_date = None
+        for date_str in (
+            event_data.get("startTime"),
+            ref_market.get("gameStartTime"),
+            event_data.get("endDate"),
+            ref_market.get("endDate"),
+            ref_market.get("endDateIso"),
+        ):
+            if not date_str:
+                continue
+            try:
+                end_date = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+                break
+            except Exception:
+                continue
+
+        # Aggregate volume/liquidity across all markets in the event
+        volume = sum(float(m.get("volumeNum") or m.get("volume") or 0) for m in markets)
+        liquidity = sum(
+            float(m.get("liquidityNum") or m.get("liquidity") or 0) for m in markets
         )
 
         return PolymarketEvent(

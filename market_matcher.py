@@ -8,6 +8,7 @@ Matches Betfair events against Polymarket markets using:
   - Date proximity window (±36h)
 """
 
+import unicodedata
 from typing import List, Optional, Tuple, Dict
 from difflib import SequenceMatcher
 import re
@@ -45,6 +46,7 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "deportivo alaves": ["alaves"],
     "real sociedad": ["r sociedad"],
     # Italian football
+    "napoli": ["ssc napoli", "napoli calcio"],
     "ac milan": ["milan"],
     "inter milan": ["inter", "internazionale", "fc internazionale"],
     "juventus": ["juve"],
@@ -52,9 +54,14 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "ss lazio": ["lazio"],
     # German football
     "borussia dortmund": ["bvb", "dortmund"],
-    "borussia mgladbach": ["b. monchengladbach", "mgladbach", "gladbach"],
+    "borussia mgladbach": [
+        "b. monchengladbach",
+        "mgladbach",
+        "gladbach",
+        "borussia monchengladbach",
+    ],
     "rb leipzig": ["rbl", "rasenball"],
-    "bayer leverkusen": ["leverkusen"],
+    "bayer leverkusen": ["leverkusen", "bayer 04 leverkusen", "b04"],
     "eintracht frankfurt": ["frankfurt"],
     "werder bremen": ["werder"],
     # French football
@@ -95,6 +102,58 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "bangladesh": ["ban"],
     # Draw / tie
     "draw": ["the draw", "tie", "drawn", "x"],
+    # Basketball — NBA (Polymarket uses nickname only; Betfair uses full city+name)
+    "atlanta hawks": ["hawks"],
+    "brooklyn nets": ["nets"],
+    "charlotte hornets": ["hornets"],
+    "cleveland cavaliers": ["cavaliers", "cavs"],
+    "denver nuggets": ["nuggets"],
+    "detroit pistons": ["pistons"],
+    "houston rockets": ["rockets"],
+    "indiana pacers": ["pacers"],
+    "los angeles clippers": ["clippers", "la clippers"],
+    "memphis grizzlies": ["grizzlies"],
+    "milwaukee bucks": ["bucks"],
+    "minnesota timberwolves": ["timberwolves"],
+    "new orleans pelicans": ["pelicans"],
+    "oklahoma city thunder": ["thunder", "okc"],
+    "orlando magic": ["magic"],
+    "philadelphia 76ers": ["76ers", "sixers"],
+    "portland trail blazers": ["trail blazers", "blazers"],
+    "toronto raptors": ["raptors"],
+    "utah jazz": ["jazz"],
+    "washington wizards": ["wizards"],
+    # Ice Hockey — NHL (same pattern)
+    "anaheim ducks": ["ducks"],
+    "boston bruins": ["bruins"],
+    "buffalo sabres": ["sabres"],
+    "calgary flames": ["flames"],
+    "carolina hurricanes": ["hurricanes"],
+    "chicago blackhawks": ["blackhawks"],
+    "colorado avalanche": ["avalanche"],
+    "columbus blue jackets": ["blue jackets"],
+    "dallas stars": ["stars"],
+    "detroit red wings": ["red wings"],
+    "edmonton oilers": ["oilers"],
+    "minnesota wild": ["wild"],
+    "montreal canadiens": ["canadiens"],
+    "nashville predators": ["predators"],
+    "new jersey devils": ["devils"],
+    "new york islanders": ["islanders"],
+    "new york rangers": ["rangers"],
+    "ottawa senators": ["senators"],
+    "philadelphia flyers": ["flyers"],
+    "pittsburgh penguins": ["penguins"],
+    "san jose sharks": ["sharks"],
+    "seattle kraken": ["kraken"],
+    "st. louis blues": ["blues"],
+    "tampa bay lightning": ["lightning"],
+    "toronto maple leafs": ["maple leafs"],
+    "utah hockey club": ["utah hc"],
+    "vancouver canucks": ["canucks"],
+    "vegas golden knights": ["golden knights"],
+    "washington capitals": ["capitals"],
+    "winnipeg jets": ["jets"],
 }
 
 # Build reverse lookup: variant → canonical
@@ -105,9 +164,65 @@ for canonical, variants in TEAM_ALIASES.items():
         _ALIAS_LOOKUP[v] = canonical
 
 
+# Club-type suffixes that Polymarket appends but Betfair omits (or vice versa).
+# Stripped before alias lookup so "Arsenal FC" and "Arsenal" both resolve to "arsenal".
+_CLUB_SUFFIXES = (
+    " fc",
+    " afc",
+    " cf",
+    " sc",
+    " fk",
+    " bsc",
+    " ac",
+    " sk",
+    " hk",
+    " as",
+    " sd",
+)
+
+
+# Generic tokens shared across many team names — not reliable alone for matching.
+# When checking whether a BF team name appears in Polymarket text, we require ALL
+# distinctive (non-generic) tokens to be present, not just any single one.
+_GENERIC_NAME_TOKENS: frozenset = frozenset(
+    {
+        "real",
+        "city",
+        "united",
+        "new",
+        "south",
+        "north",
+        "east",
+        "west",
+        "club",
+        "the",
+        "san",
+        "los",
+        "las",
+        "de",
+        "da",
+        "st",
+        "saint",
+        "fc",
+        "afc",
+        "sc",
+        "cf",
+        "sk",
+        "ac",
+        "as",
+    }
+)
+
+
 def _canonicalise(name: str) -> str:
     """Return the canonical form of a team/player name, or the original if unknown."""
-    return _ALIAS_LOOKUP.get(name.lower().strip(), name.lower().strip())
+    n = unicodedata.normalize("NFD", name).encode("ascii", "ignore").decode("ascii")
+    n = n.lower().strip()
+    for suffix in _CLUB_SUFFIXES:
+        if n.endswith(suffix):
+            n = n[: -len(suffix)].strip()
+            break
+    return _ALIAS_LOOKUP.get(n, n)
 
 
 class MarketMatcher:
@@ -132,11 +247,15 @@ class MarketMatcher:
         """
         Find matching events between Betfair and Polymarket.
 
-        Returns list of (betfair_event, polymarket_event, score) tuples
-        where score >= self.similarity_threshold.
-        """
-        matches: List[Tuple[Event, PolymarketEvent, float]] = []
+        Uses a global 1:1 greedy assignment so each Polymarket event can be
+        claimed by at most one Betfair event (eliminates false duplicates):
+          1. Score every (BF, PM) pair that exceeds the threshold.
+          2. Sort all scored pairs descending.
+          3. Greedily assign highest-scoring pairs, skipping any BF or PM
+             event that has already been matched.
 
+        Returns list of (betfair_event, polymarket_event, score) tuples.
+        """
         print(
             f"\n[MATCHING] {len(traditional_events)} Betfair vs "
             f"{len(polymarket_events)} Polymarket  (threshold={self.similarity_threshold})"
@@ -145,18 +264,17 @@ class MarketMatcher:
         # Pre-group Polymarket events by sport category for fast lookup
         poly_by_sport: Dict[str, List[PolymarketEvent]] = {}
         for pe in polymarket_events:
-            key = (pe.sport_category if hasattr(pe, "sport_category") else "").lower()
+            key = getattr(pe, "sport_category", "").lower()
             poly_by_sport.setdefault(key, []).append(pe)
-        poly_by_sport["all"] = polymarket_events  # fallback
 
+        # Step 1 — score every candidate pair above threshold
+        all_pairs: List[Tuple[Event, PolymarketEvent, float]] = []
         for trad_event in traditional_events:
-            # Only search Polymarket events in the same sport, plus a small
-            # window around the Betfair kick-off time
-            sport_key = trad_event.category.lower() if trad_event.category else "all"
+            sport_key = trad_event.category.lower() if trad_event.category else ""
+            # Use sport-scoped candidates when available, else full list
             candidates = poly_by_sport.get(sport_key) or polymarket_events
 
-            # Date pre-filter: Polymarket end_date should be within 3 days
-            # of Betfair commence_time (avoids comparing totally unrelated events)
+            # Date pre-filter: PM end_date within ±3 days of BF commence_time
             if trad_event.commence_time:
                 bf_time = trad_event.commence_time
                 if bf_time.tzinfo is None:
@@ -165,26 +283,36 @@ class MarketMatcher:
                     pe
                     for pe in candidates
                     if pe.end_date is None
-                    or (
-                        abs(
+                    or abs(
+                        (
                             (
-                                (
-                                    pe.end_date.replace(tzinfo=timezone.utc)
-                                    if pe.end_date.tzinfo is None
-                                    else pe.end_date
-                                )
-                                - bf_time
-                            ).total_seconds()
-                        )
-                        <= 3 * 86400
+                                pe.end_date.replace(tzinfo=timezone.utc)
+                                if pe.end_date.tzinfo is None
+                                else pe.end_date
+                            )
+                            - bf_time
+                        ).total_seconds()
                     )
+                    <= 3 * 86400
                 ]
 
-            best = self._find_best_match(trad_event, candidates)
-            if best:
-                poly_event, score = best
+            for pe in candidates:
+                score = self._calculate_similarity(trad_event, pe)
                 if score >= self.similarity_threshold:
-                    matches.append((trad_event, poly_event, score))
+                    all_pairs.append((trad_event, pe, score))
+
+        # Step 2 — sort by score descending
+        all_pairs.sort(key=lambda x: x[2], reverse=True)
+
+        # Step 3 — greedy 1:1 assignment
+        used_bf: set = set()
+        used_pm: set = set()
+        matches: List[Tuple[Event, PolymarketEvent, float]] = []
+        for bf_ev, pm_ev, score in all_pairs:
+            if bf_ev.id not in used_bf and pm_ev.id not in used_pm:
+                matches.append((bf_ev, pm_ev, score))
+                used_bf.add(bf_ev.id)
+                used_pm.add(pm_ev.id)
 
         matched_bfids = {bf.id for bf, _, _ in matches}
         print(
@@ -256,15 +384,25 @@ class MarketMatcher:
 
         def _team_in_poly(team_raw: str, team_can: str) -> bool:
             tl = team_raw.lower()
+            # 1. Full canonical name in poly text (strongest signal)
             if tl in poly_combined or team_can in poly_combined:
                 return True
-            # Token-level: any single token of the team name found?
-            for tok in re.split(r"[\s\-]+", tl):
-                if len(tok) > 3 and tok in poly_combined:
+            # 2. Any registered alias present
+            for alias in TEAM_ALIASES.get(team_can, []):
+                if alias in poly_combined:
                     return True
-            # Alias reverse: check if any known alias of this canonical appears
-            aliases = TEAM_ALIASES.get(team_can, [])
-            return any(a in poly_combined for a in aliases)
+            # 3. ALL distinctive tokens must appear (prevents city-name false positives).
+            #    'Distinctive' = not in _GENERIC_NAME_TOKENS and length > 3.
+            #    E.g. 'Atletico Madrid' → distinctive=['atletico','madrid'];
+            #    both must be in poly — just 'madrid' alone is not enough.
+            raw_tokens = [t for t in re.split(r"[\s\-/]+", tl) if len(t) > 2]
+            distinctive = [
+                t for t in raw_tokens if t not in _GENERIC_NAME_TOKENS and len(t) > 3
+            ]
+            if distinctive:
+                return all(t in poly_combined for t in distinctive)
+            # 4. Single-word short team (all tokens ≤3 or all generic) — require canonical
+            return False
 
         home_found = _team_in_poly(home_raw, home_can)
         away_found = _team_in_poly(away_raw, away_can)
@@ -313,11 +451,59 @@ class MarketMatcher:
         where the two names refer to the same real-world team/player.
 
         Used by the arbitrage engine to decide which outcomes to compare.
+
+        For binary Yes/No markets (e.g. "Will Arsenal win? Yes/No"), the
+        'Yes' outcome is resolved to the team named in the question.
         """
+        _BINARY = {"yes", "no"}
+        _DRAW_VARIANTS = {"draw", "the draw", "tie", "drawn", "x"}
+
+        # Only align back outcomes — lay outcomes are handled by _check_lay_back
+        back_outcomes = [o for o in trad_event.outcomes if o.bookmaker != "Betfair Lay"]
+
+        # Binary market fallback: resolve "Yes"/"No" → both team names.
+        # Works for tennis/2-outcome sports where PM uses Yes/No format.
+        if poly_event.outcomes and all(
+            o.lower() in _BINARY for o in poly_event.outcomes
+        ):
+            # Build a searchable text from the question (outcomes are just Yes/No)
+            poly_all_text = self._normalise(poly_event.question)
+
+            yes_bf_name: Optional[str] = None
+            for outcome in back_outcomes:
+                team_can = _canonicalise(outcome.name)
+                if team_can in _DRAW_VARIANTS:
+                    continue
+                # 1. Canonical substring match
+                if team_can and team_can in poly_all_text:
+                    yes_bf_name = outcome.name
+                    break
+                # 2. Distinctive-token match — handles "Djokovic N." vs "djokovic"
+                tl = outcome.name.lower()
+                raw_tokens = [t for t in re.split(r"[\s\-/]+", tl) if len(t) > 2]
+                distinctive = [t for t in raw_tokens if len(t) > 3]
+                if distinctive and all(t in poly_all_text for t in distinctive):
+                    yes_bf_name = outcome.name
+                    break
+
+            if not yes_bf_name:
+                return []
+
+            pairs: List[Tuple[str, str]] = [(yes_bf_name, "Yes")]
+            # Map the complementary runner to "No" (binary opposite)
+            yes_can = _canonicalise(yes_bf_name)
+            for outcome in back_outcomes:
+                team_can = _canonicalise(outcome.name)
+                if team_can == yes_can or team_can in _DRAW_VARIANTS:
+                    continue
+                pairs.append((outcome.name, "No"))
+                break  # only one complement
+            return pairs
+
         pairs: List[Tuple[str, str]] = []
         used_poly: set = set()
 
-        for outcome in trad_event.outcomes:
+        for outcome in back_outcomes:
             bf_can = _canonicalise(outcome.name)
             best_poly: Optional[str] = None
             best_score = 0.0
@@ -346,6 +532,9 @@ class MarketMatcher:
     # ------------------------------------------------------------------
 
     def _normalise(self, text: str) -> str:
+        text = (
+            unicodedata.normalize("NFD", text).encode("ascii", "ignore").decode("ascii")
+        )
         text = text.lower()
         text = re.sub(r"[^\w\s]", " ", text)
         text = re.sub(r"\s+", " ", text)
@@ -461,7 +650,7 @@ class MarketMatcher:
     def _normalize_text(self, text: str) -> str:
         return self._normalise(text)
 
-    def find_matches(
+    def _legacy_find_matches(
         self, traditional_events: List[Event], polymarket_events: List[PolymarketEvent]
     ) -> List[Tuple[Event, PolymarketEvent, float]]:
         """
@@ -493,7 +682,7 @@ class MarketMatcher:
         )
         return matches
 
-    def _find_best_match(
+    def _legacy_find_best_match(
         self, trad_event: Event, poly_events: List[PolymarketEvent]
     ) -> Optional[Tuple[PolymarketEvent, float]]:
         """Find the best matching Polymarket event for a traditional event."""
@@ -508,7 +697,7 @@ class MarketMatcher:
 
         return (best_match, best_score) if best_match else None
 
-    def _calculate_similarity(
+    def _legacy_calculate_similarity(
         self, trad_event: Event, poly_event: PolymarketEvent
     ) -> float:
         """
@@ -738,7 +927,7 @@ class MarketMatcher:
         }
         return keyword_map.get(category.lower(), [])
 
-    def create_combined_event(
+    def _legacy_create_combined_event(
         self, trad_event: Event, poly_event: PolymarketEvent
     ) -> Event:
         """

@@ -144,11 +144,7 @@ class ArbitrageEngine:
         aligned = matcher.align_outcomes(trad_event, poly_event)
 
         if not aligned:
-            # Fallback: use combined event and hope _find_best_back_odds
-            # deduplicates by name correctly
-            combined = matcher.create_combined_event(trad_event, poly_event)
-            combined.match_quality = similarity
-            return self.check_event_arbitrage(combined)
+            return None
 
         # Build a synthetic combined event with the best price per aligned outcome
         pm_decimal_odds = poly_event.to_decimal_odds()
@@ -197,6 +193,30 @@ class ArbitrageEngine:
         if len(synthetic_outcomes) < 2:
             return None
 
+        # For any Betfair back runner that was NOT covered by the aligned pairs
+        # (e.g. the "No" side of a binary PM market, or a runner whose name
+        # failed fuzzy alignment), add its best Betfair back price so the full
+        # implied-probability sum is computed correctly.
+        from market_matcher import _canonicalise as _can
+
+        covered_cans = {_can(o.name) for o in synthetic_outcomes}
+        seen_extra: set = set(covered_cans)
+        for o in trad_event.outcomes:
+            if o.bookmaker == "Betfair Lay":
+                continue
+            bf_can = _can(o.name)
+            if bf_can in seen_extra:
+                continue
+            seen_extra.add(bf_can)
+            # Best Betfair back price for this uncovered runner
+            bf_backs = [
+                x
+                for x in trad_event.outcomes
+                if x.bookmaker == "Betfair Exchange" and _can(x.name) == bf_can
+            ]
+            if bf_backs:
+                synthetic_outcomes.append(max(bf_backs, key=lambda x: x.price))
+
         # Sanity check: a valid cross-platform arb needs outcomes from at least
         # two different bookmakers. If every outcome's best price happens to sit
         # on the same platform the implied-probability arithmetic is meaningless.
@@ -220,6 +240,30 @@ class ArbitrageEngine:
     # ------------------------------------------------------------------
     # Lay-back strategy
     # ------------------------------------------------------------------
+
+    def _resolve_binary_pm_name(
+        self, pm_name: str, pm_question: str, trad_event: Event
+    ) -> Optional[str]:
+        """
+        For binary Yes/No Polymarket markets, resolve 'Yes' to the actual team
+        name by searching for a Betfair runner name within the question text.
+        Returns None for 'No' outcomes or if no team can be identified.
+        """
+        from market_matcher import _canonicalise
+
+        if pm_name.lower() not in {"yes", "no"}:
+            return pm_name  # already a real team/outcome name
+        if pm_name.lower() == "no":
+            return None  # 'No' has no direct team mapping
+        # Scan question for a Betfair runner name
+        q_can = _canonicalise(pm_question)
+        for outcome in trad_event.outcomes:
+            team_can = _canonicalise(outcome.name)
+            if team_can in self._DRAW_VARIANTS:
+                continue
+            if team_can and team_can in q_can:
+                return outcome.name
+        return None
 
     def _check_lay_back(
         self,
@@ -247,12 +291,20 @@ class ArbitrageEngine:
         for pm_name, pm_odds in zip(poly_event.outcomes, pm_decimal_odds):
             if pm_odds <= 1.0:
                 continue
+
+            # Resolve binary Yes/No outcomes to the actual team name
+            effective_name = self._resolve_binary_pm_name(
+                pm_name, poly_event.question, trad_event
+            )
+            if effective_name is None:
+                continue  # skip "No" and unresolvable binaries
+
             pm_prob = 1.0 / pm_odds  # implied probability from Polymarket price
 
             # Find matching Betfair LAY price for this outcome
             from market_matcher import _canonicalise
 
-            pm_can = _canonicalise(pm_name)
+            pm_can = _canonicalise(effective_name)
 
             for outcome in trad_event.outcomes:
                 if outcome.bookmaker != "Betfair Lay":
@@ -290,19 +342,19 @@ class ArbitrageEngine:
                 bf_lay_stake = 100.0 * pm_prob  # lay liability on Betfair
 
                 synthetic_event = Event(
-                    id=f"{trad_event.id}_lay_{pm_name}",
+                    id=f"{trad_event.id}_lay_{effective_name}",
                     sport=trad_event.sport,
                     commence_time=trad_event.commence_time,
                     home_team=trad_event.home_team,
                     away_team=trad_event.away_team,
                     outcomes=[
-                        Outcome(pm_name, pm_odds, "Polymarket", _dt.now()),
+                        Outcome(effective_name, pm_odds, "Polymarket", _dt.now()),
                         Outcome(outcome.name, lay_price, "Betfair Lay", _dt.now()),
                     ],
                     category=trad_event.category,
                     description=(
                         f"LAY {outcome.name} on Betfair @ {lay_price:.2f} / "
-                        f"BACK {pm_name} on Polymarket @ {pm_odds:.2f}"
+                        f"BACK {effective_name} on Polymarket @ {pm_odds:.2f}"
                     ),
                     match_quality=similarity,
                 )
@@ -310,12 +362,12 @@ class ArbitrageEngine:
                 opp = ArbitrageOpportunity(
                     event=synthetic_event,
                     best_outcomes=[
-                        Outcome(pm_name, pm_odds, "Polymarket", _dt.now()),
+                        Outcome(effective_name, pm_odds, "Polymarket", _dt.now()),
                         Outcome(outcome.name, lay_price, "Betfair Lay", _dt.now()),
                     ],
                     total_stake=pm_stake + bf_lay_stake,
                     stake_distribution={
-                        f"{pm_name} (Polymarket Back)": pm_stake,
+                        f"{effective_name} (Polymarket Back)": pm_stake,
                         f"{outcome.name} (Betfair Lay)": bf_lay_stake,
                     },
                     profit=(pm_stake + bf_lay_stake) * (profit_pct / 100),

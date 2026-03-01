@@ -15,6 +15,97 @@ from arbitrage_engine import ArbitrageEngine
 from models import ArbitrageOpportunity
 from utils import decimal_to_fractional, decimal_to_american
 
+# Polymarket sport-code slug prefix → URL league path
+_PM_SLUG_TO_PATH = {
+    # Soccer
+    "epl": "premier-league",
+    "bun": "bundesliga",
+    "lal": "la-liga",
+    "ucl": "champions-league",
+    "uel": "europa-league",
+    "efl": "championship",
+    "fl1": "ligue-1",
+    "sea": "serie-a",
+    "itc": "serie-a",
+    "mls": "mls",
+    "arg": "liga-profesional",
+    "bra": "brasileirao",
+    "ere": "eredivisie",
+    "tur": "super-lig",
+    "por": "primeira-liga",
+    "mex": "liga-mx",
+    "jap": "j-league",
+    "kor": "k-league",
+    "col": "colombia-primera-a",
+    "uwcl": "womens-champions-league",
+    # Basketball
+    "nba": "nba",
+    "wnba": "wnba",
+    "ncaab": "ncaa-basketball",
+    "cbb": "ncaa-basketball",
+    "euroleague": "euroleague",
+    # American football
+    "nfl": "nfl",
+    "cfb": "college-football",
+    # Baseball
+    "mlb": "mlb",
+    "kbo": "kbo",
+    # Tennis
+    "atp": "atp",
+    "wta": "wta",
+    # Ice hockey
+    "nhl": "nhl",
+    "shl": "shl",
+    "khl": "khl",
+    # MMA
+    "ufc": "ufc",
+    # Rugby
+    "ruprem": "premiership-rugby",
+    "ruurc": "united-rugby-championship",
+    "rueuchamp": "european-rugby-champions-cup",
+    # Cricket
+    "cricipl": "ipl",
+    "crint": "cricket",
+    "t20": "cricket",
+    "odi": "cricket",
+}
+
+# Betfair sport category → exchange URL sport path
+_BF_SPORT_PATH = {
+    "soccer": "football",
+    "tennis": "tennis",
+    "cricket": "cricket",
+    "rugby": "rugby-union",
+    "basketball": "basketball",
+    "americanfootball": "american-football",
+    "baseball": "baseball",
+    "icehockey": "ice-hockey",
+    "mma": "mixed-martial-arts",
+}
+
+
+def _polymarket_url(slug: str) -> str:
+    """Construct a direct Polymarket event URL from the event slug."""
+    if not slug:
+        return ""
+    prefix = slug.split("-")[0].lower()
+    path = _PM_SLUG_TO_PATH.get(prefix, "")
+    if path:
+        return f"https://polymarket.com/sports/{path}/{slug}"
+    return f"https://polymarket.com/event/{slug}"
+
+
+def _betfair_url(market_id: str, category: str) -> str:
+    """Construct a direct Betfair Exchange market URL."""
+    # Strip suffixes added by the arbitrage engine (_combined, _lay_TeamName)
+    base_id = market_id.split("_combined")[0].split("_lay_")[0]
+    if not base_id:
+        return ""
+    sport_path = _BF_SPORT_PATH.get(category or "", "")
+    if sport_path:
+        return f"https://www.betfair.com/exchange/plus/{sport_path}/market/{base_id}"
+    return f"https://www.betfair.com/exchange/plus/market/{base_id}"
+
 
 # Helper to extract searchable team keywords
 def extract_team_keywords(team_name: str) -> List[str]:
@@ -179,7 +270,7 @@ def main():
     """Main application function."""
     init_session_state()
 
-    st.title("Betfair × Polymarket Arbitrage")
+    st.title("Betfair and Polymarket comparison")
 
     # ---------------------------------------------------------------- Sidebar
     with st.sidebar:
@@ -253,6 +344,16 @@ def main():
             step=10.0,
         )
 
+        gbp_usd_rate = st.number_input(
+            "GBP → USD Rate",
+            min_value=0.50,
+            max_value=3.00,
+            value=1.27,
+            step=0.01,
+            format="%.2f",
+            help="Current GBP to USD exchange rate — used to show USD amounts for Polymarket stakes",
+        )
+
         # ---- Scan / refresh controls ----
         st.divider()
         scan_button = st.button(
@@ -315,18 +416,22 @@ def main():
             )
             st.caption(f"Polymarket: {len(poly_events)} markets")
 
+            # Volume filter is for display/arbitrage only — matching uses ALL events
             sports_poly_events = [p for p in poly_events if p.volume >= min_volume]
             filtered_out = len(poly_events) - len(sports_poly_events)
             if filtered_out:
-                st.caption(f"{filtered_out} Polymarket markets below volume threshold")
+                st.caption(
+                    f"{filtered_out} Polymarket markets below volume threshold (matching uses all)"
+                )
 
-            opportunities = engine.compare_markets(trad_events, sports_poly_events)
+            # Pass ALL poly_events to matcher so low-volume markets aren't missed
+            opportunities = engine.compare_markets(trad_events, poly_events)
 
             # Run matcher separately to capture ALL matched pairs,
             # not just those with arbitrage profit
             from market_matcher import MarketMatcher as _MM
 
-            raw_matches = _MM().find_matches(trad_events, sports_poly_events)
+            raw_matches = _MM().find_matches(trad_events, poly_events)
             matched_count = len(raw_matches)
 
             if matched_count > 0:
@@ -342,12 +447,14 @@ def main():
             st.session_state.cross_platform_opportunities = opportunities
             st.session_state.matched_pairs = raw_matches
             st.session_state.trad_events = trad_events
-            st.session_state.poly_events = sports_poly_events
+            st.session_state.poly_events = (
+                poly_events  # store all, not just volume-filtered
+            )
             st.session_state.last_update = datetime.now()
 
             # Write comparison debug file so matching can be inspected and tuned
             _write_match_debug_file(
-                trad_events, sports_poly_events, opportunities, selected_sport_label
+                trad_events, poly_events, opportunities, selected_sport_label
             )
             st.caption("Debug written to match_debug.txt")
 
@@ -384,7 +491,9 @@ def main():
         if matched_pairs:
             if opportunities:
                 st.success(f"{len(opportunities)} arbitrage opportunities found")
-                display_cross_platform_opportunities(opportunities, investment_amount)
+                display_cross_platform_opportunities(
+                    opportunities, investment_amount, gbp_usd_rate
+                )
                 st.divider()
 
             display_matched_pairs(matched_pairs, opportunities, investment_amount)
@@ -541,6 +650,20 @@ def display_matched_pairs(
                         )
                 st.dataframe(pd.DataFrame(pm_rows), hide_index=True, width="stretch")
                 st.caption(f"Polymarket total implied: **{pm_total*100:.1f}%**")
+                st.caption(
+                    f"📊 Volume: **${pm_ev.volume:,.0f}** | Liquidity: **${pm_ev.liquidity:,.0f}**"
+                )
+
+            # Platform links
+            _lc1, _lc2 = st.columns(2)
+            with _lc1:
+                _bf_url = _betfair_url(bf_ev.id, bf_ev.category)
+                if _bf_url:
+                    st.link_button("Betfair", _bf_url, use_container_width=True)
+            with _lc2:
+                _pm_url = _polymarket_url(pm_ev.id)
+                if _pm_url:
+                    st.link_button("Polymarket", _pm_url, use_container_width=True)
 
             # Show any arb opportunities for this event
             if has_arb:
@@ -557,7 +680,9 @@ def display_matched_pairs(
 
 
 def display_cross_platform_opportunities(
-    opportunities: List[ArbitrageOpportunity], investment: float
+    opportunities: List[ArbitrageOpportunity],
+    investment: float,
+    gbp_usd_rate: float = 1.27,
 ):
     """Display cross-platform arbitrage opportunities with clear betting instructions."""
     # Summary metrics
@@ -581,6 +706,11 @@ def display_cross_platform_opportunities(
     # Sort by profit percentage
     opportunities.sort(key=lambda x: x.profit_percentage, reverse=True)
 
+    # Build Betfair market ID → Polymarket event lookup for link generation
+    _pm_by_bf_id = {
+        bf.id: pm for bf, pm, _ in getattr(st.session_state, "matched_pairs", [])
+    }
+
     for idx, opp in enumerate(opportunities, 1):
         desc = opp.event.description or ""
         is_lay_back = desc.startswith("[LAY-BACK]")
@@ -593,6 +723,28 @@ def display_cross_platform_opportunities(
             # Event details
             st.markdown(f"### {str(opp.event)}")
             st.caption(opp.event.commence_time.strftime("%d %b %Y, %H:%M"))
+
+            # Platform links
+            _bf_mid = opp.event.id.split("_combined")[0].split("_lay_")[0]
+            _pm_ev = _pm_by_bf_id.get(_bf_mid)
+
+            # Polymarket volume
+            if _pm_ev:
+                vol_str = f"${_pm_ev.volume:,.0f}"
+                liq_str = f"${_pm_ev.liquidity:,.0f}"
+                st.caption(
+                    f"📊 Polymarket volume: **{vol_str}** | Liquidity: **{liq_str}**"
+                )
+            _lc1, _lc2 = st.columns(2)
+            with _lc1:
+                _bf_url = _betfair_url(_bf_mid, opp.event.category)
+                if _bf_url:
+                    st.link_button("Betfair", _bf_url, use_container_width=True)
+            with _lc2:
+                if _pm_ev:
+                    _pm_url = _polymarket_url(_pm_ev.id)
+                    if _pm_url:
+                        st.link_button("Polymarket", _pm_url, use_container_width=True)
 
             # Profit summary
             col1, col2, col3 = st.columns(3)
@@ -655,12 +807,12 @@ def display_cross_platform_opportunities(
                         liability = stake * (lay_price - 1) if lay_price else 0
                         lay_implied_pct = 100 / lay_price if lay_price > 0 else 0
                         st.markdown(
-                            f"**Leg 1 — Betfair Exchange (lay)**\n"
+                            f"**Leg 1 — 🔴 LAY — Betfair Exchange**\n"
                             f"- Lay odds: {lay_price:.3f}"
                             f" ({decimal_to_fractional(lay_price) if lay_price else '—'})"
                             f" — implied {lay_implied_pct:.1f}%\n"
-                            f"- Liability: £{liability:.2f} (fund upfront)\n"
-                            f"- **Action:** Betfair Exchange → Lay **{runner_name}** @ {lay_price:.2f} → £{stake:.2f}"
+                            f"- Stake: £{stake:.2f} | Liability: £{liability:.2f} (must be in your Betfair wallet)\n"
+                            f"- **Action: LAY {runner_name} @ {lay_price:.2f} on Betfair Exchange → £{stake:.2f}**"
                         )
                     else:
                         pm_outcome = next(
@@ -673,12 +825,13 @@ def display_cross_platform_opportunities(
                         )
                         pm_price = pm_outcome.price if pm_outcome else 0
                         pm_prob_pct = 100 / pm_price if pm_price > 0 else 0
+                        usd_stake = stake * gbp_usd_rate
                         st.markdown(
-                            f"**Leg 2 — Polymarket (back)**\n"
+                            f"**Leg 2 — 🟢 BET (Back) — Polymarket**\n"
                             f"- Odds: {pm_price:.3f}"
                             f" ({decimal_to_fractional(pm_price) if pm_price else '—'})"
                             f" — implied {pm_prob_pct:.1f}%\n"
-                            f"- **Action:** Polymarket → **{runner_name}** → £{stake:.2f}"
+                            f"- **Action: BET (Back) {runner_name} @ {pm_price:.3f} on Polymarket → £{stake:.2f} (~${usd_stake:.2f} USD)**"
                         )
             else:
                 # BACK-BACK: show arbitrage maths then step-by-step instructions
@@ -722,20 +875,42 @@ def display_cross_platform_opportunities(
                     expected_return = outcome_stake * outcome.price
 
                     if outcome.bookmaker == "Polymarket":
-                        platform_header = f"**Leg {i} — Polymarket**"
-                        action = (
-                            f"Polymarket → **{outcome.name}** → £{outcome_stake:.2f}"
+                        platform_header = f"**Leg {i} — 🟢 BET (Back) — Polymarket**"
+                        usd_outcome_stake = outcome_stake * gbp_usd_rate
+                        action = f"BET (Back) **{outcome.name}** @ {outcome.price:.3f} on Polymarket → £{outcome_stake:.2f} (~${usd_outcome_stake:.2f} USD)"
+                    elif outcome.bookmaker == "Betfair Lay":
+                        platform_header = f"**Leg {i} — 🔴 LAY — Betfair Exchange**"
+                        action = f"LAY **{outcome.name}** @ {outcome.price:.3f} on Betfair Exchange → £{outcome_stake:.2f}"
+                    else:
+                        platform_header = f"**Leg {i} — 🟢 BACK — Betfair Exchange**"
+                        action = f"BACK **{outcome.name}** @ {outcome.price:.3f} on Betfair Exchange → £{outcome_stake:.2f}"
+
+                    gross_payout = outcome_stake * outcome.price
+                    if outcome.bookmaker == "Polymarket":
+                        usd_gross_payout = gross_payout * gbp_usd_rate
+                        payout_note = f"- Gross payout if wins: **£{gross_payout:.2f}** (~${usd_gross_payout:.2f} USD)"
+                    elif outcome.bookmaker == "Betfair Lay":
+                        liability = outcome_stake * (outcome.price - 1)
+                        payout_note = (
+                            f"- Liability (upfront): **£{liability:.2f}** | "
+                            f"Payout if you win (selection loses): **£{outcome_stake:.2f}**"
                         )
                     else:
-                        lay_tag = " (lay)" if outcome.bookmaker == "Betfair Lay" else ""
-                        platform_header = f"**Leg {i} — Betfair Exchange{lay_tag}**"
-                        action = f"Betfair Exchange → Back **{outcome.name}** @ {outcome.price:.2f} → £{outcome_stake:.2f}"
+                        # Betfair back — ~5% commission on net winnings
+                        net_payout = (
+                            outcome_stake + (gross_payout - outcome_stake) * 0.95
+                        )
+                        payout_note = (
+                            f"- Gross payout if wins: £{gross_payout:.2f}"
+                            f" → net **~£{net_payout:.2f}** after ~5% commission"
+                        )
 
                     st.markdown(
                         f"{platform_header}\n"
                         f"- Odds: {outcome.price:.3f} ({decimal_to_fractional(outcome.price)})"
                         f" — implied {implied_pct:.1f}%\n"
                         f"- Stake: £{outcome_stake:.2f}\n"
+                        f"{payout_note}\n"
                         f"- **Action:** {action}"
                     )
 

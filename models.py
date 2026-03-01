@@ -107,6 +107,7 @@ class PolymarketEvent:
     end_date: Optional[datetime]
     volume: float
     liquidity: float
+    sport_category: str = ""  # Broad sport category, e.g. 'soccer', 'basketball'
 
     def to_decimal_odds(self) -> List[float]:
         """Convert Polymarket prices to decimal odds."""
