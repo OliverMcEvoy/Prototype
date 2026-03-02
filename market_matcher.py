@@ -98,7 +98,14 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "manchester city": ["man city", "man c", "mcfc"],
     "tottenham hotspur": ["spurs", "tottenham", "thfc"],
     "wolverhampton": ["wolves", "wolverhampton wanderers"],
-    "nottingham forest": ["nott'm forest", "notts forest", "nffc"],
+    "nottingham forest": [
+        "nott'm forest",
+        "notts forest",
+        "nffc",
+        "nottm forest",
+        "nottm forest fc",
+        "nottingham forest fc",
+    ],
     "west bromwich": ["west brom", "wba"],
     "queens park rangers": ["qpr"],
     "sheffield united": ["sheff utd", "sheffield utd"],
@@ -108,43 +115,99 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "newcastle": ["newcastle united", "nufc"],
     "west ham": ["west ham united", "whu"],
     "leicester": ["leicester city", "lcfc"],
-    "ipswich": ["ipswich town"],
-    "luton": ["luton town"],
+    "ipswich": ["ipswich town", "ipswich town fc"],
+    "luton": ["luton town", "luton town fc"],
+    "hull": ["hull city", "hull city fc", "hull city afc"],
+    "wolverhampton wanderers": [
+        "wolves",
+        "wolverhampton",
+        "wolverhampton wanderers fc",
+    ],
+    "newcastle united": ["newcastle", "nufc", "newcastle united fc"],
+    "brighton": [
+        "brighton & hove albion",
+        "brighton hove",
+        "brighton & hove albion fc",
+    ],
     # Spanish football
-    "real madrid": ["real madrid cf"],
-    "atletico madrid": ["atletico de madrid", "atl madrid"],
+    "real madrid": ["real madrid cf", "real madrid fc"],
+    "atletico madrid": [
+        "atletico de madrid",
+        "atl madrid",
+        "atletico madrid cf",
+        "club atletico de madrid",
+    ],
+    "barcelona": ["fc barcelona", "barca"],
+    "real betis": ["real betis balompie", "betis"],
+    "celta vigo": ["celta", "rc celta de vigo"],
+    "valencia": ["valencia cf"],
+    "villarreal": ["villarreal cf"],
+    "sevilla": ["sevilla fc"],
     "real betis": ["real betis balompie"],
     "athletic bilbao": ["athletic club"],
     "deportivo alaves": ["alaves"],
     "real sociedad": ["r sociedad"],
     # Italian football
     "napoli": ["ssc napoli", "napoli calcio"],
-    "ac milan": ["milan"],
-    "inter milan": ["inter", "internazionale", "fc internazionale"],
-    "juventus": ["juve"],
-    "as roma": ["roma"],
-    "ss lazio": ["lazio"],
+    "ac milan": ["milan", "ac milan fc"],
+    "inter milan": [
+        "inter",
+        "internazionale",
+        "fc internazionale",
+        "fc internazionale milano",
+    ],
+    "juventus": ["juve", "juventus fc"],
+    "as roma": ["roma", "as roma fc"],
+    "ss lazio": ["lazio", "ss lazio fc"],
+    "atalanta": ["atalanta bc"],
+    "fiorentina": ["acf fiorentina"],
     # German football
-    "borussia dortmund": ["bvb", "dortmund"],
+    "borussia dortmund": ["bvb", "dortmund", "bv borussia 09 dortmund"],
     "borussia mgladbach": [
         "b. monchengladbach",
         "mgladbach",
         "gladbach",
         "borussia monchengladbach",
+        "borussia monchengladbach fc",
     ],
-    "rb leipzig": ["rbl", "rasenball"],
+    "rb leipzig": ["rbl", "rasenball", "rb leipzig fc"],
     "bayer leverkusen": ["leverkusen", "bayer 04 leverkusen", "b04"],
-    "eintracht frankfurt": ["frankfurt"],
-    "werder bremen": ["werder"],
+    "eintracht frankfurt": ["frankfurt", "eintracht frankfurt fc"],
+    "werder bremen": ["werder", "sv werder bremen"],
+    "vfl wolfsburg": ["wolfsburg"],
+    "vfb stuttgart": ["stuttgart"],
+    "sc freiburg": ["freiburg"],
+    "fc koln": ["koln", "1. fc koln", "fc koln fc"],
+    "mainz": ["1. fsv mainz 05", "1. fsv mainz", "mainz 05"],
+    "union berlin": ["1. fc union berlin", "fc union berlin"],
+    "st. pauli": ["fc st. pauli", "fc st pauli", "st pauli"],
+    "hoffenheim": ["tsg hoffenheim", "tsg 1899 hoffenheim"],
+    "heidenheim": ["1. fc heidenheim", "1. fc heidenheim 1846"],
     # French football
-    "paris saint-germain": ["psg", "paris sg", "paris saint germain"],
-    "olympique lyonnais": ["lyon", "ol"],
-    "olympique marseille": ["marseille", "om"],
-    "stade rennais": ["rennes"],
+    "paris saint-germain": [
+        "psg",
+        "paris sg",
+        "paris saint germain",
+        "paris saint-germain fc",
+    ],
+    "olympique lyonnais": ["lyon", "ol", "olympique lyonnais fc"],
+    "olympique marseille": ["marseille", "om", "olympique de marseille"],
+    "stade rennais": ["rennes", "stade rennais fc"],
+    "monaco": ["as monaco", "as monaco fc"],
+    "lille": ["losc", "losc lille", "lille osc"],
+    "nice": ["ogc nice"],
+    "lens": ["rc lens"],
+    "strasbourg": ["rc strasbourg", "rc strasbourg alsace"],
+    "nantes": ["fc nantes"],
+    "reims": ["stade de reims"],
+    "brest": ["stade brestois", "stade brestois 29"],
+    "toulouse": ["toulouse fc"],
+    "clermont": ["clermont foot", "asm clermont auvergne"],
     # Portuguese football
-    "sl benfica": ["benfica"],
+    "sl benfica": ["benfica", "sport lisboa e benfica", "slb"],
     "fc porto": ["porto"],
-    "sporting cp": ["sporting lisbon", "sporting"],
+    "sporting cp": ["sporting lisbon", "sporting", "sporting cp fc"],
+    "sc braga": ["braga", "sporting braga"],
     # Dutch football
     "ajax": ["afc ajax", "ajax amsterdam"],
     "psv": ["psv eindhoven"],
@@ -210,6 +273,8 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "toronto raptors": ["raptors"],
     "utah jazz": ["jazz"],
     "washington wizards": ["wizards"],
+    "sacramento kings": ["kings", "sac kings"],
+    "san antonio spurs": ["spurs"],
     # Ice Hockey — NHL (same pattern)
     "anaheim ducks": ["ducks"],
     "boston bruins": ["bruins"],
@@ -220,8 +285,10 @@ TEAM_ALIASES: Dict[str, List[str]] = {
     "colorado avalanche": ["avalanche"],
     "columbus blue jackets": ["blue jackets"],
     "dallas stars": ["stars"],
-    "detroit red wings": ["red wings"],
+    "detroit red wings": ["red wings", "wings"],
     "edmonton oilers": ["oilers"],
+    "florida panthers": ["panthers"],
+    "los angeles kings": ["kings", "la kings"],
     "minnesota wild": ["wild"],
     "montreal canadiens": ["canadiens"],
     "nashville predators": ["predators"],
@@ -777,13 +844,24 @@ class MarketMatcher:
         """
         Multi-signal similarity score (0–1).
 
-        Signals:
-          1. Both team names present in Polymarket question / outcomes (+0.55 bonus)
-          2. Canonical alias matching for team names
-          3. Token-overlap Jaccard on normalised names
-          4. SequenceMatcher string similarity
-          5. Date proximity (±6h = 1.0, ±36h = 0.5, >3d = 0.0)
+        Dispatches to the sport-specific matcher (from the matchers/ package)
+        which handles competition-prefix stripping, club-name normalisation,
+        and nickname-only matching for each sport.
+
+        Falls back to the legacy inline logic only when the matchers package
+        raises an unexpected error.
         """
+        try:
+            from matchers import get_matcher
+
+            matcher = get_matcher(trad_event.category)
+            result = matcher.score(trad_event, poly_event)
+            if result is not None:
+                return float(result)
+        except Exception:
+            pass  # fall through to legacy implementation
+
+        # ---- Legacy inline implementation (fallback) ----
         # Strip competition prefix from Polymarket question
         poly_question = poly_event.question
         poly_match_part = (
