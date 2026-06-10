@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
-import { ScanControls } from './components'
+import { ScanControls, TodoPanel } from './components'
 import OpportunityDetailPage from './pages/OpportunityDetailPage'
 import {
   buildOpportunityId,
@@ -155,6 +155,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [scanParams, setScanParams] = useState<ScanParams>(defaultScanParams)
+  const [todoDetached, setTodoDetached] = useState(false)
 
   const loadScan = useCallback(async (params: ScanParams) => {
     setLoading(true)
@@ -352,7 +353,7 @@ export default function App() {
         ))}
       </nav>
 
-      <main className="grid">
+      <main className={todoDetached ? 'grid grid-expanded' : 'grid'}>
         <section className="card panel">
           <h2>{activeSection}</h2>
           <p className="muted">
@@ -400,15 +401,7 @@ export default function App() {
           )}
         </section>
 
-        <aside className="card panel sidebar">
-          <h2>TODO</h2>
-          <ul className="todo-preview">
-            <li>Implement rest of configuration options for the frontend</li>
-            <li>Implement periodic refresh</li>
-            <li>Matched Pairs pages and perma links</li>
-            <li>Dockerise</li>
-          </ul>
-        </aside>
+        <TodoPanel onDetachedChange={setTodoDetached} />
       </main>
     </div>
   )

@@ -294,6 +294,10 @@ a {
   margin-top: 1rem;
 }
 
+.grid-expanded {
+  grid-template-columns: 1fr;
+}
+
 .panel {
   padding: 20px;
 }
@@ -456,6 +460,58 @@ a {
 
 .sidebar {
   align-self: start;
+}
+
+.sidebar-floating {
+  position: fixed;
+  z-index: 25;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  user-select: none;
+}
+
+.sidebar-floating:active {
+  cursor: grabbing;
+}
+
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sidebar-heading h2 {
+  margin: 0;
+}
+
+.todo-float-toggle {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  padding: 0.15rem 0.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.todo-float-toggle:hover {
+  color: #ffffff;
+}
+
+.lock-toggle-icon {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+}
+
+.todo-float-toggle:focus-visible {
+  outline: 1px solid rgba(96, 165, 250, 0.75);
+  outline-offset: 2px;
 }
 
 .todo-preview {
