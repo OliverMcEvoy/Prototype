@@ -73,13 +73,6 @@ app.py                       # Legacy CLI notice (no Streamlit)
 *.py at root                 # Compatibility shims -> backend.*
 ```
 
-## Migration Status
-
-- Streamlit removed.
-- Backend logic moved under `backend/`.
-- Root Python modules preserved as shims to avoid breaking old imports.
-- Tests moved under `backend/tests/` for backend-focused workflows.
-
 ## Documentation
 
 - API structure: [docs/API_README.md](docs/API_README.md)

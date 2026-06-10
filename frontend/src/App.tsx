@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import OpportunityDetailPage from './pages/OpportunityDetailPage'
+import {
+  buildOpportunityId,
+  formatOpportunityLabel,
+  getHashRoute,
+  getOpportunityRouteId,
+  readOpportunitySnapshot,
+  saveOpportunitySnapshot,
+  type OpportunitySnapshot,
+  type Opportunity,
+} from './lib/opportunityRoutes'
 
 type Section =
   | 'Overview'
@@ -9,13 +20,17 @@ type Section =
   | 'Candidate Matches'
 
 interface BetfairEventSummary {
+  id?: string
   home_team?: string
   away_team?: string
   sport?: string
   description?: string
+  commence_time?: string
+  category?: string
 }
 
 interface PolymarketEventSummary {
+  id?: string
   question?: string
   sport_category?: string
 }
@@ -24,15 +39,6 @@ interface MatchedPair {
   betfair?: BetfairEventSummary
   polymarket?: PolymarketEventSummary
   similarity: number
-}
-
-interface Opportunity {
-  event?: {
-    home_team?: string
-    away_team?: string
-    description?: string
-  }
-  profit_percentage?: number
 }
 
 interface DashboardScanResponse {
@@ -62,7 +68,7 @@ function Card({
   subtitle,
 }: {
   title: string
-  value: string
+  value: ReactNode
   subtitle: string
 }) {
   return (
@@ -71,6 +77,16 @@ function Card({
       <div className="metric-value">{value}</div>
       <div className="metric-subtitle">{subtitle}</div>
     </div>
+  )
+}
+
+function LoadingDots() {
+  return (
+    <span className="loading-dots" aria-label="Updating" aria-live="polite">
+      <span className="loading-dot">.</span>
+      <span className="loading-dot">.</span>
+      <span className="loading-dot">.</span>
+    </span>
   )
 }
 
@@ -87,7 +103,47 @@ function SectionList({ items }: { items: string[] }) {
   )
 }
 
+function OpportunityList({
+  items,
+  onOpen,
+}: {
+  items: Opportunity[]
+  onOpen: (item: Opportunity) => void
+}) {
+  return (
+    <div className="list">
+      {items.map((item, index) => {
+        const id = buildOpportunityId(item)
+        const href = `${'#'}${'/opportunity/'}${id}`
+
+        return (
+          <a
+            className="list-row opportunity-row"
+            href={href}
+            key={`${id}-${index}`}
+            onClick={(event) => {
+              event.preventDefault()
+              onOpen(item)
+            }}
+          >
+            <span className="opportunity-copy">
+              <span className="opportunity-title">{formatOpportunityLabel(item)}</span>
+              <span className="opportunity-meta">
+                {(item.profit_percentage ?? 0).toFixed(2)}% profit
+              </span>
+            </span>
+            <span className="list-arrow" aria-hidden="true">
+              →
+            </span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function App() {
+  const [route, setRoute] = useState(getHashRoute)
   const [activeSection, setActiveSection] = useState<Section>('Overview')
   const [scanData, setScanData] = useState<DashboardScanResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -117,21 +173,33 @@ export default function App() {
     loadScan()
   }, [loadScan])
 
+  useEffect(() => {
+    const handleHashChange = () => {
+      setRoute(getHashRoute())
+    }
+
+    window.addEventListener('hashchange', handleHashChange)
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange)
+    }
+  }, [])
+
   const summary = useMemo(
     () => [
       {
         title: 'Matched pairs',
-        value: loading ? '…' : String(scanData?.matched_pair_count ?? 0),
+        value: loading ? <LoadingDots /> : String(scanData?.matched_pair_count ?? 0),
         subtitle: 'From the latest scan',
       },
       {
         title: 'Opportunities',
-        value: loading ? '…' : String(scanData?.opportunity_count ?? 0),
+        value: loading ? <LoadingDots /> : String(scanData?.opportunity_count ?? 0),
         subtitle: 'Above threshold',
       },
       {
         title: 'Last update',
-        value: loading ? 'Loading' : 'Live',
+        value: loading ? 'Updating' : 'Live',
         subtitle: scanData?.generated_at
           ? new Date(scanData.generated_at).toLocaleString()
           : 'Backend response timestamp',
@@ -142,8 +210,33 @@ export default function App() {
 
   const matchedPairs = scanData?.matched_pairs ?? []
   const opportunities = scanData?.opportunities ?? []
-  const tradEvents = scanData?.sample_betfair_events ?? []
-  const polyMarkets = scanData?.sample_polymarket_markets ?? []
+  const opportunityRouteId = getOpportunityRouteId(route)
+
+  const opportunitySnapshot = useMemo(() => {
+    if (!opportunityRouteId) {
+      return null
+    }
+
+    const cachedSnapshot = readOpportunitySnapshot(opportunityRouteId)
+    if (cachedSnapshot) {
+      return cachedSnapshot
+    }
+
+    const liveOpportunity = opportunities.find(
+      (item) => buildOpportunityId(item) === opportunityRouteId,
+    )
+
+    if (!liveOpportunity) {
+      return null
+    }
+
+    return {
+      id: opportunityRouteId,
+      opportunity: liveOpportunity,
+      generated_at: scanData?.generated_at,
+      saved_at: scanData?.generated_at ?? new Date().toISOString(),
+    } as OpportunitySnapshot
+  }, [opportunities, opportunityRouteId, scanData?.generated_at])
 
   const formatEvent = (item: MatchedPair) => {
     const bf =
@@ -153,28 +246,58 @@ export default function App() {
     return `${bf} · ${pm} · ${(item.similarity * 100).toFixed(1)}%`
   }
 
-  const formatOpportunity = (item: Opportunity) => {
-    const event =
-      item.event?.description ||
-      `${item.event?.home_team ?? 'Unknown'} vs ${item.event?.away_team ?? 'Unknown'}`
-    return `${event} · ${(item.profit_percentage ?? 0).toFixed(2)}% profit`
+  const openOpportunityPage = useCallback(
+    (item: Opportunity) => {
+      const id = buildOpportunityId(item)
+
+      saveOpportunitySnapshot({
+        id,
+        opportunity: item,
+        generated_at: scanData?.generated_at,
+        saved_at: new Date().toISOString(),
+      })
+
+      window.location.hash = `#/opportunity/${id}`
+    },
+    [scanData?.generated_at],
+  )
+
+  const returnToDashboard = useCallback(() => {
+    window.location.hash = '#/'
+  }, [])
+
+  if (opportunityRouteId) {
+    return opportunitySnapshot ? (
+      <div className="app-shell">
+        <OpportunityDetailPage snapshot={opportunitySnapshot} onBack={returnToDashboard} />
+      </div>
+    ) : (
+      <div className="app-shell">
+        <header className="hero card detail-hero">
+          <div>
+            <div className="eyebrow">Opportunity page</div>
+            <h1>Loading saved opportunity</h1>
+            <p>
+              This permalink is valid, but the snapshot is not cached yet. Refresh the dashboard or wait for the latest scan.
+            </p>
+          </div>
+          <div className="hero-actions">
+            <button className="button primary" onClick={returnToDashboard}>
+              Back to dashboard
+            </button>
+          </div>
+        </header>
+      </div>
+    )
   }
-
-  const formatBetfairEvent = (item: BetfairEventSummary) =>
-    `${item.sport ?? 'Sport'} · ${item.description || `${item.home_team ?? 'Unknown'} vs ${item.away_team ?? 'Unknown'}`}`
-
-  const formatPolymarketEvent = (item: PolymarketEventSummary) =>
-    `${item.sport_category || 'sports'} · ${item.question || 'Unknown question'}`
 
   return (
     <div className="app-shell">
       <header className="hero card">
         <div>
-          <div className="eyebrow">Arbitrage dashboard</div>
-          <h1>React frontend demo</h1>
-          <p>
-            A frontend dashbaord for the polymarket arbitrage TBD name.
-          </p>
+          <div className="eyebrow">React frontend demo</div>
+          <h1>Arbitage Dashboard</h1>
+          <p>A frontend dashboard for the Polymarket arbitrage scanner.</p>
         </div>
         <div className="hero-actions">
           <button className="button primary" onClick={loadScan}>
@@ -227,14 +350,8 @@ export default function App() {
             <SectionList items={matchedPairs.map(formatEvent)} />
           )}
           {activeSection === 'Cross-Platform Opportunities' && (
-            <SectionList items={opportunities.map(formatOpportunity)} />
+            <OpportunityList items={opportunities} onOpen={openOpportunityPage} />
           )}
-          {/* {activeSection === 'Traditional Events' && (
-            <SectionList items={tradEvents.map(formatBetfairEvent)} />
-          )}
-          {activeSection === 'Polymarket Markets' && (
-            <SectionList items={polyMarkets.map(formatPolymarketEvent)} />
-          )} */}
           {activeSection === 'Candidate Matches' && (
             <SectionList
               items={
@@ -253,7 +370,7 @@ export default function App() {
           <h2>Next steps</h2>
           <ul className="todo-preview">
             <li>Implement configuration options for the frontend</li>
-            <li>Implemment periodic refresh</li>
+            <li>Implement periodic refresh</li>
             <li>Dockerise</li>
           </ul>
         </aside>
