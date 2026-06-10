@@ -111,7 +111,9 @@ export function TodoPanel({ onDetachedChange }: { onDetachedChange: (detached: b
   return (
     <aside
       ref={panelRef}
-      className={floating ? 'card panel sidebar sidebar-floating' : 'card panel sidebar'}
+      className={[
+        floating ? 'card panel sidebar sidebar-floating' : 'card panel sidebar',
+      ].join(' ')}
       style={
         floating
           ? {
@@ -136,11 +138,20 @@ export function TodoPanel({ onDetachedChange }: { onDetachedChange: (detached: b
           <LockToggleSymbol floating={floating} />
         </button>
       </div>
+      <span className="todo-panel-sr-only">Project todo items</span>
       <ul className="todo-preview">
-        <li>Implement rest of configuration options for the frontend</li>
-        <li>Implement periodic refresh</li>
-        <li>Matched Pairs pages and perma links</li>
-        <li>Dockerise</li>
+        <li>
+          Implement rest of configuration options for the frontend
+        </li>
+        <li>
+          Implement periodic refresh
+        </li>
+        <li>
+          Matched Pairs pages and perma links
+        </li>
+        <li>
+          Dockerise
+        </li>
       </ul>
     </aside>
   )
