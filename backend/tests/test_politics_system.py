@@ -27,12 +27,12 @@ from typing import List
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import Config
+from backend.config import Config
 from betfair_client import BetfairClient
 from polymarket_client import PolymarketClient
-from market_matcher import MarketMatcher
+from backend.market_matcher import MarketMatcher
 from arbitrage_engine import ArbitrageEngine
-from models import Event, PolymarketEvent, Outcome, ArbitrageOpportunity
+from backend.models import Event, PolymarketEvent, Outcome, ArbitrageOpportunity
 
 # ---------------------------------------------------------------------------
 # Skip condition — no point running if creds are missing

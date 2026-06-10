@@ -14,9 +14,8 @@ from difflib import SequenceMatcher
 import re
 from datetime import datetime, timedelta, timezone
 
-from models import Event, PolymarketEvent, Outcome
-from config import Config
-
+from backend.models import Event, PolymarketEvent, Outcome
+from backend.config import Config
 
 # ---------------------------------------------------------------------------
 # Region / country vocabulary for politics cross-platform conflict detection.
@@ -852,7 +851,7 @@ class MarketMatcher:
         raises an unexpected error.
         """
         try:
-            from matchers import get_matcher
+            from backend.matchers import get_matcher
 
             matcher = get_matcher(trad_event.category)
             result = matcher.score(trad_event, poly_event)

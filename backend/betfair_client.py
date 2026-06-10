@@ -9,8 +9,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Set
 
-from models import Event, Outcome
-from config import Config
+from backend.models import Event, Outcome
+from backend.config import Config
 
 
 class BetfairClient:

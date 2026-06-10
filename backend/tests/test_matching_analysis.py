@@ -25,16 +25,16 @@ from typing import List, Tuple, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import Config
+from backend.config import Config
 from betfair_client import BetfairClient
 from polymarket_client import PolymarketClient
-from market_matcher import (
+from backend.market_matcher import (
     MarketMatcher,
     _canonicalise,
     TEAM_ALIASES,
     _GENERIC_NAME_TOKENS,
 )
-from models import Event, PolymarketEvent
+from backend.models import Event, PolymarketEvent
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────

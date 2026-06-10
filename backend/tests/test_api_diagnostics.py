@@ -18,7 +18,7 @@ from typing import Any
 # ── allow running from project root without installing the package ──────────
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import Config
+from backend.config import Config
 from betfair_client import BetfairClient
 from polymarket_client import PolymarketClient
 

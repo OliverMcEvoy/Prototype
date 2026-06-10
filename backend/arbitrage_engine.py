@@ -16,8 +16,8 @@ Cross-platform strategy:
 """
 
 from typing import List, Dict, Tuple, Optional
-from models import Event, Outcome, ArbitrageOpportunity, PolymarketEvent
-from utils import calculate_arbitrage, normalize_team_name
+from backend.models import Event, Outcome, ArbitrageOpportunity, PolymarketEvent
+from backend.utils import calculate_arbitrage, normalize_team_name
 
 
 class ArbitrageEngine:
@@ -88,7 +88,7 @@ class ArbitrageEngine:
           2. Lay-back: Betfair lay price vs Polymarket back price
              → profit if Polymarket implied prob > 1/lay_odds
         """
-        from market_matcher import MarketMatcher
+        from backend.market_matcher import MarketMatcher
 
         matcher = MarketMatcher()
         matches = matcher.find_matches(traditional_events, polymarket_events)
@@ -197,7 +197,7 @@ class ArbitrageEngine:
         # (e.g. the "No" side of a binary PM market, or a runner whose name
         # failed fuzzy alignment), add its best Betfair back price so the full
         # implied-probability sum is computed correctly.
-        from market_matcher import _canonicalise as _can
+        from backend.market_matcher import _canonicalise as _can
 
         covered_cans = {_can(o.name) for o in synthetic_outcomes}
         seen_extra: set = set(covered_cans)
@@ -249,7 +249,7 @@ class ArbitrageEngine:
         name by searching for a Betfair runner name within the question text.
         Returns None for 'No' outcomes or if no team can be identified.
         """
-        from market_matcher import _canonicalise
+        from backend.market_matcher import _canonicalise
 
         if pm_name.lower() not in {"yes", "no"}:
             return pm_name  # already a real team/outcome name
@@ -302,7 +302,7 @@ class ArbitrageEngine:
             pm_prob = 1.0 / pm_odds  # implied probability from Polymarket price
 
             # Find matching Betfair LAY price for this outcome
-            from market_matcher import _canonicalise
+            from backend.market_matcher import _canonicalise
 
             pm_can = _canonicalise(effective_name)
 

@@ -18,9 +18,9 @@ import unittest
 from datetime import datetime, timezone, timedelta
 from typing import List
 
-from models import Event, Outcome, PolymarketEvent
-from market_matcher import MarketMatcher, TEAM_ALIASES
-from config import Config
+from backend.models import Event, Outcome, PolymarketEvent
+from backend.market_matcher import MarketMatcher, TEAM_ALIASES
+from backend.config import Config
 from betfair_client import BetfairClient
 
 

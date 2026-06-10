@@ -9,8 +9,8 @@ Two APIs:
 import requests
 from datetime import datetime
 from typing import List, Optional, Set
-from models import PolymarketEvent
-from config import Config
+from backend.models import PolymarketEvent
+from backend.config import Config
 
 
 class PolymarketClient:

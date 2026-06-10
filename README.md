@@ -11,34 +11,82 @@ Cross-platform arbitrage between Betfair Exchange and Polymarket sports markets.
 
 **Requirements:** Python 3.8+, Betfair account with a Delayed App Key.
 
+````bash
+python3 -m venv .venv
+# Betfair × Polymarket Arbitrage Scanner
+
+Cross-platform arbitrage between Betfair Exchange and Polymarket.
+
+## Stack
+
+- Frontend: React + Vite + TypeScript (`frontend/`)
+- Backend: FastAPI + Python services (`backend/`)
+- Data providers: Betfair Exchange API and Polymarket API
+
+## Quick Start
+
+### 1) Start backend (terminal A)
+
 ```bash
+cd /home/omcevoy/Prototype
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+uvicorn backend.app:app --reload --port 8000
+````
+
+### 2) Start frontend (terminal B)
+
+```bash
+cd /home/omcevoy/Prototype/frontend
+npm install
+npm run dev
 ```
 
-**Betfair App Key:** My Account → API Access → Create Developer Application Key. The free Delayed key is sufficient.
+Frontend runs on http://127.0.0.1:5173 and proxies `/api/*` to backend `:8000`.
 
-**Polymarket:** Public API — no key required.
+## Repository Structure
 
-## Project Structure
+```text
+backend/                     # Source-of-truth Python backend
+	app.py                     # FastAPI routes
+	service.py                 # Live scan orchestration
+	betfair_client.py          # Betfair integration
+	polymarket_client.py       # Polymarket integration
+	arbitrage_engine.py        # Arbitrage calculations
+	market_matcher.py          # Cross-platform matching
+	matchers/                  # Sport-specific matchers
+	tests/                     # Backend tests + diagnostics
 
+frontend/                    # React app for UI development
+	src/App.tsx                # Dashboard UI and API fetch
+	src/main.tsx               # Frontend entrypoint
+	src/styles.css             # Shared CSS styles
+	vite.config.js             # Dev proxy (/api -> backend)
+	tsconfig.json              # TypeScript config
+
+docs/
+	API_README.md              # API contract and payload shape
+	ARCHITECTURE.md            # Layering and design notes
+
+app.py                       # Legacy CLI notice (no Streamlit)
+*.py at root                 # Compatibility shims -> backend.*
 ```
-app.py                # Streamlit dashboard
-config.py             # Configuration
-models.py             # Data models
-betfair_client.py     # Betfair Exchange API client
-polymarket_client.py  # Polymarket API client
-arbitrage_engine.py   # Arbitrage detection logic
-market_matcher.py     # Cross-platform event matching
-utils.py              # Odds conversion utilities
-```
+
+## Migration Status
+
+- Streamlit removed.
+- Backend logic moved under `backend/`.
+- Root Python modules preserved as shims to avoid breaking old imports.
+- Tests moved under `backend/tests/` for backend-focused workflows.
+
+## Documentation
+
+- API structure: [docs/API_README.md](docs/API_README.md)
+- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Notes
 
-- Betfair charges ~5% commission on exchange winnings.
-- Polymarket requires USDC on the Polygon network.
-- Odds change fast — verify before placing.
-- Match quality below 80% warrants manual confirmation.
-- `match_debug.txt` is written on each scan — use it to tune the alias table in `market_matcher.py`.
+- Betfair credentials are required for live Betfair scans.
+- Polymarket is public read-only for market data.
+- Odds move quickly; always re-check before execution.
