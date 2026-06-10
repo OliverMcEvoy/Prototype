@@ -33,6 +33,10 @@ def dashboard_scan(
     threshold: float = Query(0.35, ge=0.0, le=1.0),
     investment: float = Query(100.0, gt=0.0),
     gbp_usd_rate: float = Query(1.27, gt=0.0),
+    betfair_days_ahead: int = Query(7, ge=1, le=30),
+    betfair_min_hours_ahead: float = Query(0.0, ge=0.0, le=72.0),
+    polymarket_active_only: bool = Query(True),
+    polymarket_min_volume: float = Query(0.0, ge=0.0),
 ) -> dict:
     try:
         return run_live_scan(
@@ -40,6 +44,10 @@ def dashboard_scan(
             threshold=threshold,
             investment=investment,
             gbp_usd_rate=gbp_usd_rate,
+            betfair_days_ahead=betfair_days_ahead,
+            betfair_min_hours_ahead=betfair_min_hours_ahead,
+            polymarket_active_only=polymarket_active_only,
+            polymarket_min_volume=polymarket_min_volume,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

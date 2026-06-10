@@ -14,6 +14,7 @@
      - Render dashboard UI
      - Trigger scans
      - Display matched pairs and opportunities
+       - Build opportunity permalinks and restore saved opportunity snapshots
    - Talks to backend over HTTP (`/api/...`)
 
 2. **Backend API (FastAPI)**
@@ -57,6 +58,16 @@ React UI -> GET /api/dashboard/scan -> FastAPI route
        -> MarketMatcher + ArbitrageEngine
        -> JSON payload -> React render
 ```
+
+## Opportunity detail flow
+
+Opportunity rows on the dashboard open a hash route like `#/opportunity/<id>`.
+The frontend stores a snapshot in browser `localStorage` before navigation so the
+detail page can render immediately on return or refresh.
+
+If the snapshot is not cached, the detail page attempts to resolve the same
+opportunity from the latest scan data already loaded in memory. This keeps the
+permalink client-side and avoids needing a backend route for each opportunity.
 
 ## Why Node.js is used here
 

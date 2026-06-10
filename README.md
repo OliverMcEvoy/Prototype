@@ -83,3 +83,10 @@ app.py                       # Legacy CLI notice (no Streamlit)
 - Betfair credentials are required for live Betfair scans.
 - Polymarket is public read-only for market data.
 - Odds move quickly; always re-check before execution.
+
+## Opportunity Permalinks
+
+- Each opportunity row opens a client-side permalink in the form `#/opportunity/<id>`.
+- The opportunity ID is derived from the opportunity label plus a small fingerprint of the market data, so the link stays stable for the same scan result.
+- When a user opens an opportunity, the dashboard saves a snapshot in browser `localStorage` so the detail page can render even after a refresh.
+- If the snapshot is missing, the detail page falls back to the currently loaded scan results and shows a loading state until the opportunity can be recovered.

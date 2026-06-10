@@ -84,6 +84,7 @@ a {
 .button.primary {
   background: linear-gradient(135deg, #2563eb, #7c3aed);
   border-color: transparent;
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.22);
 }
 
 .metrics {
@@ -106,6 +107,125 @@ a {
   font-size: 2rem;
   font-weight: 800;
   margin-top: 0.35rem;
+}
+
+.scan-controls {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.scan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.scan-field {
+  display: grid;
+  gap: 0.45rem;
+  color: #cbd5e1;
+  font-size: 0.92rem;
+}
+
+.scan-field-label {
+  width: fit-content;
+  color: #f8fafc;
+  font-weight: 700;
+  cursor: help;
+}
+
+.scan-field-hint {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.scan-field-checkbox {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.scan-checkbox-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.scan-field input,
+.scan-field select {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  padding: 0.85rem 0.95rem;
+  font: inherit;
+}
+
+.scan-field input:focus,
+.scan-field select:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.55);
+  outline-offset: 2px;
+}
+
+.scan-field-checkbox input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.2rem;
+  accent-color: #60a5fa;
+}
+
+.scan-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.35rem;
+}
+
+.scan-update-button {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.9);
+  font: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.scan-update-button:hover:not(:disabled) {
+  color: #ffffff;
+}
+
+.scan-update-button:focus-visible {
+  outline: 1px solid rgba(147, 197, 253, 0.75);
+  outline-offset: 2px;
+}
+
+.scan-update-button:disabled {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.scan-update-button:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+.scan-term {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 0.2rem 0;
+  margin-top: 0.25rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .loading-dots {
@@ -360,6 +480,10 @@ a {
 
   .hero-actions {
     width: 100%;
+  }
+
+  .scan-grid {
+    grid-template-columns: 1fr;
   }
 
   .detail-back-arrow {

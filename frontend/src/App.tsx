@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { ScanControls } from './components'
 import OpportunityDetailPage from './pages/OpportunityDetailPage'
 import {
   buildOpportunityId,
@@ -10,9 +11,14 @@ import {
   type OpportunitySnapshot,
   type Opportunity,
 } from './lib/opportunityRoutes'
+import {
+  defaultScanParams,
+  type ScanParamKey,
+  type ScanParams,
+} from './config/scanFieldConfig'
 
 type Section =
-  | 'Overview'
+  | 'Scan Controls'
   | 'Matched Pairs'
   | 'Cross-Platform Opportunities'
 //   | 'Traditional Events'
@@ -54,7 +60,7 @@ interface DashboardScanResponse {
 }
 
 const sections: Section[] = [
-  'Overview',
+  'Scan Controls',
   'Cross-Platform Opportunities',
   'Matched Pairs',
 //   'Traditional Events',
@@ -144,17 +150,28 @@ function OpportunityList({
 
 export default function App() {
   const [route, setRoute] = useState(getHashRoute)
-  const [activeSection, setActiveSection] = useState<Section>('Overview')
+  const [activeSection, setActiveSection] = useState<Section>('Scan Controls')
   const [scanData, setScanData] = useState<DashboardScanResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [scanParams, setScanParams] = useState<ScanParams>(defaultScanParams)
 
-  const loadScan = useCallback(async () => {
+  const loadScan = useCallback(async (params: ScanParams) => {
     setLoading(true)
     setError('')
 
     try {
-      const response = await fetch('/api/dashboard/scan?sport=all')
+      const query = new URLSearchParams({
+        sport: params.sport,
+        threshold: params.threshold,
+        investment: params.investment,
+        gbp_usd_rate: params.gbpUsdRate,
+        betfair_days_ahead: params.betfairDaysAhead,
+        betfair_min_hours_ahead: params.betfairMinHoursAhead,
+        polymarket_active_only: String(params.polymarketActiveOnly),
+        polymarket_min_volume: params.polymarketMinVolume,
+      })
+      const response = await fetch(`/api/dashboard/scan?${query.toString()}`)
       if (!response.ok) {
         const message = await response.text()
         throw new Error(message || `Request failed with status ${response.status}`)
@@ -170,7 +187,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    loadScan()
+    void loadScan(defaultScanParams)
   }, [loadScan])
 
   useEffect(() => {
@@ -266,6 +283,20 @@ export default function App() {
     window.location.hash = '#/'
   }, [])
 
+  const updateScanParam = useCallback(
+    (key: ScanParamKey, value: string | boolean) => {
+      setScanParams((current) => ({
+        ...current,
+        [key]: value,
+      }))
+    },
+    [],
+  )
+
+  const submitScanRequest = useCallback(() => {
+    void loadScan(scanParams)
+  }, [loadScan, scanParams])
+
   if (opportunityRouteId) {
     return opportunitySnapshot ? (
       <div className="app-shell">
@@ -299,12 +330,6 @@ export default function App() {
           <h1>Arbitage Dashboard</h1>
           <p>A frontend dashboard for the Polymarket arbitrage scanner.</p>
         </div>
-        <div className="hero-actions">
-          <button className="button primary" onClick={loadScan}>
-            Refresh
-          </button>
-          <button className="button">Export</button>
-        </div>
       </header>
 
       {error ? <div className="card panel error-box">Backend error: {error}</div> : null}
@@ -332,8 +357,8 @@ export default function App() {
           <h2>{activeSection}</h2>
           <p className="muted">
             {loading && 'Loading live backend data…'}
-            {activeSection === 'Overview' &&
-              'A simple landing area for the rebuilt dashboard.'}
+            {activeSection === 'Scan Controls' &&
+              'Adjust the backend scan parameters, then request an updated data set.'}
             {activeSection === 'Cross-Platform Opportunities' &&
               'Profitable back-back and lay-back candidates.'}
             {activeSection === 'Matched Pairs' &&
@@ -345,6 +370,15 @@ export default function App() {
             {activeSection === 'Candidate Matches' &&
               'Near-miss binary markets and election-style matches.'}
           </p>
+
+          {activeSection === 'Scan Controls' && (
+            <ScanControls
+              loading={loading}
+              scanParams={scanParams}
+              onChange={updateScanParam}
+              onSubmit={submitScanRequest}
+            />
+          )}
 
           {activeSection === 'Matched Pairs' && (
             <SectionList items={matchedPairs.map(formatEvent)} />
@@ -367,10 +401,11 @@ export default function App() {
         </section>
 
         <aside className="card panel sidebar">
-          <h2>Next steps</h2>
+          <h2>TODO</h2>
           <ul className="todo-preview">
-            <li>Implement configuration options for the frontend</li>
+            <li>Implement rest of configuration options for the frontend</li>
             <li>Implement periodic refresh</li>
+            <li>Matched Pairs pages and perma links</li>
             <li>Dockerise</li>
           </ul>
         </aside>

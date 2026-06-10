@@ -90,7 +90,13 @@ def _make_betfair_client() -> BetfairClient:
     )
 
 
-def _fetch_events(sport: str) -> tuple[List[Event], List[PolymarketEvent]]:
+def _fetch_events(
+    sport: str,
+    betfair_days_ahead: int,
+    betfair_min_hours_ahead: float,
+    polymarket_active_only: bool,
+    polymarket_min_volume: float,
+) -> tuple[List[Event], List[PolymarketEvent]]:
     bf_client = _make_betfair_client()
     if not bf_client.login():
         raise RuntimeError(bf_client.get_last_error() or "Betfair login failed")
@@ -99,17 +105,22 @@ def _fetch_events(sport: str) -> tuple[List[Event], List[PolymarketEvent]]:
 
     if sport == "politics":
         bf_events = bf_client.get_politics_markets()
-        pm_events = pm_client.get_politics_markets(active_only=True, min_volume=0)
+        pm_events = pm_client.get_politics_markets(
+            active_only=polymarket_active_only,
+            min_volume=polymarket_min_volume,
+        )
         return bf_events, pm_events
 
     sport_hints = None if sport == "all" else [sport]
     bf_events = bf_client.get_odds(
-        sport_hints=sport_hints, days_ahead=7, min_hours_ahead=0
+        sport_hints=sport_hints,
+        days_ahead=betfair_days_ahead,
+        min_hours_ahead=betfair_min_hours_ahead,
     )
     pm_events = pm_client.get_sports_markets(
         sport_hint=None if sport == "all" else sport,
-        active_only=True,
-        min_volume=0,
+        active_only=polymarket_active_only,
+        min_volume=polymarket_min_volume,
     )
     return bf_events, pm_events
 
@@ -119,12 +130,22 @@ def run_live_scan(
     threshold: float = 0.35,
     investment: float = 100.0,
     gbp_usd_rate: float = 1.27,
+    betfair_days_ahead: int = 7,
+    betfair_min_hours_ahead: float = 0.0,
+    polymarket_active_only: bool = True,
+    polymarket_min_volume: float = 0.0,
 ) -> Dict[str, Any]:
     """Fetch live Betfair + Polymarket data and compute matches/opportunities."""
     matcher = MarketMatcher(similarity_threshold=threshold)
     engine = ArbitrageEngine()
 
-    bf_events, pm_events = _fetch_events(sport)
+    bf_events, pm_events = _fetch_events(
+        sport=sport,
+        betfair_days_ahead=betfair_days_ahead,
+        betfair_min_hours_ahead=betfair_min_hours_ahead,
+        polymarket_active_only=polymarket_active_only,
+        polymarket_min_volume=polymarket_min_volume,
+    )
     matches = matcher.find_matches(bf_events, pm_events)
     opportunities = engine.compare_markets(bf_events, pm_events)
 
@@ -137,6 +158,10 @@ def run_live_scan(
         "threshold": threshold,
         "investment": investment,
         "gbp_usd_rate": gbp_usd_rate,
+        "betfair_days_ahead": betfair_days_ahead,
+        "betfair_min_hours_ahead": betfair_min_hours_ahead,
+        "polymarket_active_only": polymarket_active_only,
+        "polymarket_min_volume": polymarket_min_volume,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "betfair_event_count": len(bf_events),
         "polymarket_event_count": len(pm_events),

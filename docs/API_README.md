@@ -35,11 +35,21 @@ opportunities, and event samples.
 - `threshold` (float, default: `0.35`, range: `0.0..1.0`)
 - `investment` (float, default: `100.0`, must be `> 0`)
 - `gbp_usd_rate` (float, default: `1.27`, must be `> 0`)
+- `betfair_days_ahead` (int, default: `7`, range: `1..30`)
+- `betfair_min_hours_ahead` (float, default: `0.0`, range: `0.0..72.0`)
+- `polymarket_active_only` (bool, default: `true`)
+- `polymarket_min_volume` (float, default: `0.0`, must be `>= 0`)
 
 **Example**
 
 ```http
 GET /api/dashboard/scan?sport=all&threshold=0.35&investment=100&gbp_usd_rate=1.27
+```
+
+Extended example:
+
+```http
+GET /api/dashboard/scan?sport=soccer&threshold=0.35&investment=100&gbp_usd_rate=1.27&betfair_days_ahead=7&betfair_min_hours_ahead=0&polymarket_active_only=true&polymarket_min_volume=0
 ```
 
 **Response shape**
@@ -51,6 +61,10 @@ GET /api/dashboard/scan?sport=all&threshold=0.35&investment=100&gbp_usd_rate=1.2
   "threshold": 0.35,
   "investment": 100.0,
   "gbp_usd_rate": 1.27,
+  "betfair_days_ahead": 7,
+  "betfair_min_hours_ahead": 0.0,
+  "polymarket_active_only": true,
+  "polymarket_min_volume": 0.0,
   "generated_at": "2026-06-10T12:34:56+00:00",
   "betfair_event_count": 393,
   "polymarket_event_count": 1109,
@@ -114,3 +128,12 @@ fetch("/api/dashboard/scan?sport=all");
 
 In production, configure your reverse proxy/load balancer so `/api/*` routes to
 the FastAPI service.
+
+## Opportunity permalinks
+
+Opportunity detail links are handled entirely in the frontend. The dashboard
+uses hash routes like `#/opportunity/<id>` and saves a browser snapshot of the
+clicked opportunity in `localStorage` before navigating.
+
+That means the backend does not expose a separate opportunity-detail endpoint;
+the permalink is a client-side view over the latest scan payload.
