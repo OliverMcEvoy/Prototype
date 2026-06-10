@@ -63,6 +63,25 @@ export function formatOpportunityLabel(item: Opportunity) {
   )
 }
 
+export function formatOpportunityDisplayLabel(item: Opportunity) {
+  return formatOpportunityLabel(item)
+    .replace(/^\[[^\]]+\]\s*/i, '')
+    .replace(/^\d+(?:\.\d+)?%\s*match:\s*/i, '')
+    .trim()
+}
+
+export function formatSportDisplayLabel(sport?: string) {
+  if (!sport) {
+    return 'Unknown sport'
+  }
+
+  if (sport.toLowerCase() === 'soccer') {
+    return 'Football'
+  }
+
+  return sport
+}
+
 export function buildOpportunityId(item: Opportunity) {
   const label = formatOpportunityLabel(item)
   const fingerprint = JSON.stringify({

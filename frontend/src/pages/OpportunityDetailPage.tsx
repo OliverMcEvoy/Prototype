@@ -1,4 +1,4 @@
-import { type Opportunity, type OpportunitySnapshot, OPPORTUNITY_ROUTE_PREFIX, formatOpportunityLabel } from '../lib/opportunityRoutes'
+import { type Opportunity, type OpportunitySnapshot, OPPORTUNITY_ROUTE_PREFIX, formatOpportunityDisplayLabel, formatSportDisplayLabel } from '../lib/opportunityRoutes'
 
 function formatCurrency(value?: number) {
   if (value === undefined || Number.isNaN(value)) {
@@ -86,6 +86,18 @@ function getStakeDistribution(opportunity: Opportunity) {
     .sort((left, right) => right.amount - left.amount)
 }
 
+function formatDetailHeaderLabel(opportunity: Opportunity) {
+  const rawLabel = opportunity.event?.description || formatOpportunityDisplayLabel(opportunity)
+
+  return rawLabel
+    .replace(/^\[[^\]]+\]\s*/i, '')
+    .replace(/^\d+(?:\.\d+)?%\s*match:\s*/i, '')
+    .replace(/\s+—\s+Moneyline.*$/i, '')
+    .replace(/\s+\/\s+Polymarket:.*$/i, '')
+    .replace(/^(?:American Football|Football|Soccer|Basketball|Tennis|Baseball|Ice Hockey|Cricket|MMA|Rugby|Politics):\s*/i, '')
+    .trim()
+}
+
 export default function OpportunityDetailPage({
   snapshot,
   onBack,
@@ -103,6 +115,11 @@ export default function OpportunityDetailPage({
     totalStake !== undefined && guaranteedProfit !== undefined
       ? totalStake + guaranteedProfit
       : undefined
+  const eventLabel = formatDetailHeaderLabel(opportunity)
+  const eventSubtitleParts = [
+    formatSportDisplayLabel(event?.sport),
+    event?.commence_time ? formatDateTime(event.commence_time) : '',
+  ].filter(Boolean)
 
   return (
     <div className="detail-layout">
@@ -117,12 +134,12 @@ export default function OpportunityDetailPage({
           ←
         </button>
         <div>
-          <div className="eyebrow">Opportunity page</div>
-          <h1>{formatOpportunityLabel(opportunity)}</h1>
+          <div className="eyebrow">Opportunity details</div>
+          <h1>{eventLabel}</h1>
           <p>
-            Permalink: {OPPORTUNITY_ROUTE_PREFIX.replace('#', '')}
-            {snapshot.id}
+            {eventSubtitleParts.join(' · ')}
           </p>
+
         </div>
       </header>
 
@@ -142,11 +159,8 @@ export default function OpportunityDetailPage({
 
       <main className="grid detail-grid">
         <section className="card panel">
-          <h2>Opportunity summary</h2>
-          <p className="muted">
-            {event?.sport ?? 'Unknown sport'}
-            {event?.commence_time ? ` · ${formatDateTime(event.commence_time)}` : ''}
-          </p>
+          <h2>Summary</h2>
+          <p className="muted">A quick view of the stake split and guaranteed return.</p>
 
           <div className="detail-blocks">
             <div className="detail-block">
@@ -154,7 +168,7 @@ export default function OpportunityDetailPage({
               <strong>{formatStake(totalStake)}</strong>
             </div>
             <div className="detail-block">
-              <span className="detail-label">Guaranteed profit</span>
+              <span className="detail-label"> profit</span>
               <strong>{formatStake(guaranteedProfit)}</strong>
             </div>
             <div className="detail-block">
@@ -163,14 +177,14 @@ export default function OpportunityDetailPage({
             </div>
           </div>
 
-          <h3 className="detail-heading">How to split the stake</h3>
+          <h3 className="detail-heading">Stake split</h3>
           <div className="list">
             {stakeDistribution.length > 0 ? (
               stakeDistribution.map(({ bookmaker, amount }) => (
                 <div className="list-row detail-outcome" key={bookmaker}>
                   <span>
                     <span className="opportunity-title">{bookmaker}</span>
-                    <span className="opportunity-meta">Place {formatStake(amount)} on this leg</span>
+                    <span className="opportunity-meta"> Place {formatStake(amount)} on this leg</span>
                   </span>
                   <span className="muted">
                     {totalStake ? `${((amount / totalStake) * 100).toFixed(1)}%` : '—'}
@@ -185,11 +199,11 @@ export default function OpportunityDetailPage({
             )}
           </div>
 
-          <h3 className="detail-heading">Opportunity context</h3>
+          <h3 className="detail-heading">Event context</h3>
           <div className="detail-blocks">
             <div className="detail-block">
               <span className="detail-label">Event</span>
-              <strong>{formatOpportunityLabel(opportunity)}</strong>
+              <strong>{eventLabel}</strong>
             </div>
             <div className="detail-block">
               <span className="detail-label">Source event id</span>
@@ -201,14 +215,15 @@ export default function OpportunityDetailPage({
             </div>
           </div>
 
-          <h3 className="detail-heading">Best outcomes</h3>
+          <h3 className="detail-heading">Possible outcomes</h3>
           <div className="list">
             {perOutcomeResults.length > 0 ? (
               perOutcomeResults.map(({ outcome, stake, payout, netResult }, index) => (
-                <div className="list-row detail-outcome" key={`${outcome.bookmaker ?? 'bookmaker'}-${index}`}>
+                <div className="list-row detail-outcome" key={`${outcome.bookmaker ?? ' bookmaker'}-${index}`}>
                   <span>
                     <span className="opportunity-title">{outcome.name ?? 'Outcome'}</span>
                     <span className="opportunity-meta">
+                      {' '}
                       {outcome.bookmaker ?? 'Unknown bookmaker'} · stake {formatStake(stake)} · odds {formatCurrency(outcome.price)}
                     </span>
                   </span>

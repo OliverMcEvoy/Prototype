@@ -3,7 +3,7 @@ import { ScanControls, TodoPanel } from './components'
 import OpportunityDetailPage from './pages/OpportunityDetailPage'
 import {
   buildOpportunityId,
-  formatOpportunityLabel,
+  formatOpportunityDisplayLabel,
   getHashRoute,
   getOpportunityRouteId,
   readOpportunitySnapshot,
@@ -24,6 +24,16 @@ type Section =
 //   | 'Traditional Events'
 //   | 'Polymarket Markets'
   | 'Candidate Matches'
+
+type ThemeName = 'sepia' | 'terminal' | 'blue' | 'glass' | 'graphite'
+
+const themeOptions: Array<{ value: ThemeName; label: string }> = [
+  { value: 'sepia', label: 'Sepia' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'glass', label: 'Glass' },
+  { value: 'graphite', label: 'Graphite' },
+]
 
 interface BetfairEventSummary {
   id?: string
@@ -133,7 +143,7 @@ function OpportunityList({
             }}
           >
             <span className="opportunity-copy">
-              <span className="opportunity-title">{formatOpportunityLabel(item)}</span>
+              <span className="opportunity-title">{formatOpportunityDisplayLabel(item)}</span>
               <span className="opportunity-meta">
                 {(item.profit_percentage ?? 0).toFixed(2)}% profit
               </span>
@@ -156,6 +166,16 @@ export default function App() {
   const [error, setError] = useState('')
   const [scanParams, setScanParams] = useState<ScanParams>(defaultScanParams)
   const [todoDetached, setTodoDetached] = useState(false)
+  const [themeName, setThemeName] = useState<ThemeName>(() => {
+    if (typeof window === 'undefined') {
+      return 'sepia'
+    }
+
+    const savedTheme = window.localStorage.getItem('prototype:theme')
+    return savedTheme === 'terminal' || savedTheme === 'blue' || savedTheme === 'glass' || savedTheme === 'graphite' || savedTheme === 'sepia'
+      ? savedTheme
+      : 'sepia'
+  })
 
   const loadScan = useCallback(async (params: ScanParams) => {
     setLoading(true)
@@ -190,6 +210,15 @@ export default function App() {
   useEffect(() => {
     void loadScan(defaultScanParams)
   }, [loadScan])
+
+  useEffect(() => {
+    document.body.dataset.theme = themeName
+    window.localStorage.setItem('prototype:theme', themeName)
+
+    return () => {
+      delete document.body.dataset.theme
+    }
+  }, [themeName])
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -298,10 +327,23 @@ export default function App() {
     void loadScan(scanParams)
   }, [loadScan, scanParams])
 
+  const updateTheme = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    setThemeName(event.target.value as ThemeName)
+  }, [])
+
   if (opportunityRouteId) {
     return opportunitySnapshot ? (
       <div className="app-shell">
         <OpportunityDetailPage snapshot={opportunitySnapshot} onBack={returnToDashboard} />
+        <div className="theme-switcher" aria-label="Theme selector">
+          <select id="theme-select-detail" value={themeName} onChange={updateTheme}>
+            {themeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     ) : (
       <div className="app-shell">
@@ -319,6 +361,19 @@ export default function App() {
             </button>
           </div>
         </header>
+        <div className="theme-switcher" aria-label="Theme selector">
+          <select
+            id="theme-select-detail-loading"
+            value={themeName}
+            onChange={updateTheme}
+          >
+            {themeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     )
   }
@@ -403,6 +458,17 @@ export default function App() {
 
         <TodoPanel onDetachedChange={setTodoDetached} />
       </main>
+
+      <div className="theme-switcher" aria-label="Theme selector">
+        <select id="theme-select" value={themeName} onChange={updateTheme}>
+          {themeOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
     </div>
   )
 }
