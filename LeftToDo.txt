@@ -1,0 +1,39 @@
+Betfair × Polymarket Frontend Migration TODO
+===========================================
+
+This file tracks the Streamlit-era features that still need to be rebuilt in the new React frontend.
+
+1. Data loading and refresh
+- Wire the UI to a real API layer instead of static placeholder data.
+- Add periodic refresh to replace Streamlit's auto-rerun behavior.
+- Surface last-update timestamps for Betfair and Polymarket separately.
+
+2. Filters and controls
+- Restore sport selector and "All" view.
+- Add threshold controls for matching and profit filtering.
+- Add investment amount input for arbitrage calculations.
+- Add GBP/USD rate input used for cross-platform calculations.
+
+3. Matching views
+- Rebuild the matched pairs table.
+- Rebuild the cross-platform opportunities list.
+- Rebuild the candidate binary matches section.
+- Show confidence, score, and match explanation per row.
+
+4. Source data views
+- Rebuild the traditional Betfair events list.
+- Rebuild the Polymarket markets list.
+- Add compact detail panels for each selected item.
+- Preserve direct links to Betfair and Polymarket market pages.
+
+5. Debug and analysis features
+- Recreate the match debug export currently written to match_debug.txt.
+- Add a downloadable report for scan results.
+- Add a near-miss / false-positive analysis view.
+- Add per-sport breakdowns and counts.
+
+6. UX parity
+- Replace Streamlit tabs with React navigation and state.
+- Add loading, empty, and error states.
+- Add search or quick-filter support for teams and markets.
+- Add responsive layout improvements for smaller screens.
